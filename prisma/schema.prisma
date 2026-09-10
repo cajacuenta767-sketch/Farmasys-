@@ -1,0 +1,194 @@
+// Sistema de Farmacias - Esquema de base de datos
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// USUARIOS DEL SISTEMA (roles: ADMIN, FARMACEUTICO, VENDEDOR)
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  name      String
+  role      String   @default("VENDEDOR") // ADMIN | FARMACEUTICO | VENDEDOR
+  email     String?
+  phone     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sales     Sale[]
+  purchases Purchase[]
+}
+
+// CATEGORÍAS DE MEDICAMENTOS
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  products    Product[]
+}
+
+// PROVEEDORES / DISTRIBUIDORAS
+model Supplier {
+  id          String     @id @default(cuid())
+  name        String
+  taxId       String? // NIT / RUC / RFC
+  contactName String?
+  phone       String?
+  email       String?
+  address     String?
+  active      Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  products    Product[]
+  purchases   Purchase[]
+}
+
+// MEDICAMENTOS / PRODUCTOS
+model Product {
+  id                   String     @id @default(cuid())
+  code                 String     @unique
+  barcode              String?
+  name                 String
+  description          String?
+  categoryId           String?
+  category             Category?  @relation(fields: [categoryId], references: [id])
+  supplierId           String?
+  supplier             Supplier?  @relation(fields: [supplierId], references: [id])
+  lab                  String? // Laboratorio fabricante
+  activeIngredient     String? // Principio activo
+  presentation         String? // Caja x 30 tab, Frasco 120ml, etc.
+  concentration        String? // 500mg, 10mg/ml
+  purchasePrice        Float      @default(0)
+  salePrice            Float      @default(0)
+  minStock             Int        @default(5)
+  requiresPrescription Boolean     @default(false)
+  controlled           Boolean     @default(false) // Medicamento controlado
+  location             String? // Ubicación en estante (A1, B3...)
+  active               Boolean    @default(true)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  lots                 Lot[]
+  saleItems            SaleItem[]
+  purchaseItems        PurchaseItem[]
+}
+
+// LOTES DE INVENTARIO (trazabilidad y vencimientos, despacho FEFO)
+model Lot {
+  id           String     @id @default(cuid())
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id])
+  lotNumber    String
+  expiryDate   DateTime
+  quantity     Int        @default(0)
+  purchasePrice Float     @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  saleItems    SaleItem[]
+}
+
+// CLIENTES
+model Customer {
+  id        String     @id @default(cuid())
+  document  String? // Cédula / DNI / RUC
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  birthDate DateTime?
+  notes     String?
+  createdAt DateTime   @default(now())
+  sales     Sale[]
+}
+
+// VENTAS / FACTURAS
+model Sale {
+  id            String     @id @default(cuid())
+  invoiceNumber String     @unique
+  customerId    String?
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  customerName  String? // Nombre capturado al momento de la venta
+  userId        String
+  user          User       @relation(fields: [userId], references: [id])
+  subtotal      Float      @default(0)
+  tax           Float      @default(0)
+  discount      Float      @default(0)
+  total         Float      @default(0)
+  paymentMethod String     @default("EFECTIVO") // EFECTIVO | TARJETA | TRANSFERENCIA | QR
+  amountPaid    Float      @default(0)
+  change        Float      @default(0)
+  status        String     @default("COMPLETADA") // COMPLETADA | ANULADA
+  voidReason    String?
+  notes         String?
+  createdAt     DateTime   @default(now())
+  items         SaleItem[]
+  prescriptions Prescription[]
+}
+
+// DETALLE DE VENTA
+model SaleItem {
+  id          String   @id @default(cuid())
+  saleId      String
+  sale        Sale     @relation(fields: [saleId], references: [id])
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  lotId       String?
+  lot         Lot?     @relation(fields: [lotId], references: [id])
+  productName String // Snapshot del nombre
+  lotNumber   String?
+  quantity    Int
+  unitPrice   Float
+  subtotal    Float
+}
+
+// COMPRAS / ÓRDENES DE COMPRA A PROVEEDORES
+model Purchase {
+  id          String         @id @default(cuid())
+  orderNumber String         @unique
+  supplierId  String
+  supplier    Supplier       @relation(fields: [supplierId], references: [id])
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  total       Float          @default(0)
+  status      String         @default("PENDIENTE") // PENDIENTE | RECIBIDA | CANCELADA
+  notes       String?
+  createdAt   DateTime       @default(now())
+  receivedAt  DateTime?
+  items       PurchaseItem[]
+}
+
+// DETALLE DE COMPRA
+model PurchaseItem {
+  id         String    @id @default(cuid())
+  purchaseId String
+  purchase   Purchase  @relation(fields: [purchaseId], references: [id])
+  productId  String
+  product    Product   @relation(fields: [productId], references: [id])
+  quantity   Int
+  unitCost   Float
+  lotNumber  String?
+  expiryDate DateTime?
+}
+
+// RECETAS MÉDICAS (control de medicamentos que requieren receta)
+model Prescription {
+  id            String   @id @default(cuid())
+  folio         String   @unique
+  doctorName    String
+  doctorLicense String? // Registro/cédula profesional
+  patientName   String
+  saleId        String?
+  sale          Sale?    @relation(fields: [saleId], references: [id])
+  notes         String?
+  createdAt     DateTime @default(now())
+}
+
+// CONFIGURACIÓN DE LA FARMACIA (clave-valor)
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+}
