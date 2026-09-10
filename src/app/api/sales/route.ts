@@ -1,5 +1,9 @@
 import { db } from '@/lib/db'
 import { ok, bad, num, int, str, formatSeq } from '@/lib/api-helpers'
+import { logAudit } from '@/lib/audit'
+
+const POINTS_PER = 10 // 1 punto por cada $10 de compra
+const POINT_VALUE = 0.10 // cada punto canjeado vale $0.10
 
 // GET /api/sales?from=&to=&status=&search=
 export async function GET(req: Request) {
@@ -39,7 +43,7 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/sales — Registrar venta desde el POS (descuento FEFO por lotes)
+// POST /api/sales — Registrar venta desde el POS (FEFO, pagos mixtos, puntos y recetas)
 export async function POST(req: Request) {
   try {
     const b = await req.json()
@@ -49,10 +53,17 @@ export async function POST(req: Request) {
     const paymentMethod = str(b.paymentMethod) || 'EFECTIVO'
     const discount = num(b.discount, 0)
     const amountPaid = num(b.amountPaid, 0)
+    const paidCash = num(b.paidCash, 0)
+    const paidCard = num(b.paidCard, 0)
+    const paidTransfer = num(b.paidTransfer, 0)
+    const pointsRedeemed = Math.max(0, int(b.pointsRedeemed, 0))
     const items = Array.isArray(b.items) ? b.items : []
 
     if (!userId) return bad('Falta el usuario de la venta')
     if (items.length === 0) return bad('El carrito está vacío')
+    if (!['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'QR', 'MIXTO'].includes(paymentMethod)) {
+      return bad('Método de pago inválido')
+    }
 
     for (const it of items) {
       if (!str(it.productId) || int(it.quantity) <= 0) {
@@ -84,12 +95,29 @@ export async function POST(req: Request) {
       const tax = Math.round((subtotal - discount) * (taxRate / 100) * 100) / 100
       const total = Math.round((subtotal - discount + tax) * 100) / 100
 
+      // Validación según forma de pago
       if (paymentMethod === 'EFECTIVO' && amountPaid > 0 && amountPaid < total) {
         throw new Error('El monto pagado es menor al total')
+      }
+      if (paymentMethod === 'MIXTO') {
+        const sumParts = Math.round((paidCash + paidCard + paidTransfer) * 100) / 100
+        if (sumParts < total) throw new Error(`Los pagos suman ${sumParts} y el total es ${total}`)
       }
 
       const count = await tx.sale.count()
       const invoiceNumber = formatSeq('FV', count, 5)
+
+      // Puntos de lealtad: ganados por el total pagado
+      const pointsEarned = Math.floor(total / POINTS_PER)
+      // Validar canje contra el cliente
+      let redeemed = 0
+      if (customerId && pointsRedeemed > 0) {
+        const cust = await tx.customer.findUnique({ where: { id: customerId } })
+        redeemed = Math.min(pointsRedeemed, cust?.points || 0)
+        if (redeemed !== pointsRedeemed) {
+          throw new Error(`Solo puede canjear hasta ${cust?.points || 0} puntos`)
+        }
+      }
 
       const created = await tx.sale.create({
         data: {
@@ -102,14 +130,24 @@ export async function POST(req: Request) {
           discount,
           total,
           paymentMethod,
-          amountPaid: paymentMethod === 'EFECTIVO' ? amountPaid : total,
-          change: paymentMethod === 'EFECTIVO' ? Math.max(0, Math.round((amountPaid - total) * 100) / 100) : 0,
+          amountPaid: paymentMethod === 'EFECTIVO' ? amountPaid : paymentMethod === 'MIXTO' ? Math.round((paidCash + paidCard + paidTransfer) * 100) / 100 : total,
+          paidCash,
+          paidCard,
+          paidTransfer,
+          change: paymentMethod === 'EFECTIVO'
+            ? Math.max(0, Math.round((amountPaid - total) * 100) / 100)
+            : paymentMethod === 'MIXTO'
+              ? Math.max(0, Math.round((paidCash + paidCard + paidTransfer - total) * 100) / 100)
+              : 0,
+          pointsEarned,
+          pointsRedeemed: redeemed,
           status: 'COMPLETADA',
           notes: str(b.notes) || null,
         },
       })
 
       // Asignar lotes FEFO (First Expired, First Out) y crear items
+      const rxProductIds = new Set<string>()
       for (const it of items) {
         const p = products.find((x: { id: string }) => x.id === it.productId)
         let remaining = it.quantity
@@ -156,20 +194,60 @@ export async function POST(req: Request) {
               },
             })
           }
+          if (p.requiresPrescription) rxProductIds.add(p.id)
           remaining -= take
         }
       }
 
+      // Dispensación de receta: si se ingresó folio, marcar items prescritos
+      const folio = str(b.prescriptionFolio)
+      if (folio) {
+        const prescription = await tx.prescription.findUnique({ where: { folio }, include: { items: true } })
+        if (prescription) {
+          for (const pit of prescription.items) {
+            if (!pit.dispensed && pit.productId && rxProductIds.has(pit.productId)) {
+              await tx.prescriptionItem.update({ where: { id: pit.id }, data: { dispensed: true } })
+            }
+          }
+          const refreshed = await tx.prescriptionItem.findMany({ where: { prescriptionId: prescription.id } })
+          const allDone = refreshed.every((x) => x.dispensed)
+          const anyDone = refreshed.some((x) => x.dispensed)
+          await tx.prescription.update({
+            where: { id: prescription.id },
+            data: {
+              saleId: created.id,
+              status: allDone ? 'DISPENSADA' : anyDone ? 'PARCIAL' : prescription.status,
+            },
+          })
+        }
+      }
+
+      // Puntos del cliente: descontar canje, sumar ganancia
+      if (customerId && (redeemed > 0 || pointsEarned > 0)) {
+        const cust = await tx.customer.findUnique({ where: { id: customerId } })
+        if (cust) {
+          await tx.customer.update({
+            where: { id: customerId },
+            data: { points: Math.max(0, cust.points - redeemed) + pointsEarned },
+          })
+        }
+      }
+
       // Caja: registrar la venta en efectivo dentro de la sesión abierta
-      if (paymentMethod === 'EFECTIVO') {
+      const cashAmount = paymentMethod === 'EFECTIVO'
+        ? total
+        : paymentMethod === 'MIXTO'
+          ? Math.max(0, Math.round((paidCash - Math.max(0, paidCash + paidCard + paidTransfer - total)) * 100) / 100)
+          : 0
+      if (cashAmount > 0) {
         const cashSession = await tx.cashSession.findFirst({ where: { status: 'ABIERTA' } })
         if (cashSession) {
           await tx.cashMovement.create({
             data: {
               cashSessionId: cashSession.id,
               type: 'VENTA',
-              amount: total,
-              reason: `Venta ${invoiceNumber}`,
+              amount: cashAmount,
+              reason: `Venta ${invoiceNumber}${paymentMethod === 'MIXTO' ? ' (parte en efectivo)' : ''}`,
               userId,
             },
           })
@@ -178,6 +256,8 @@ export async function POST(req: Request) {
 
       return created
     })
+
+    await logAudit({ userId, userName: b.userName || 'Usuario', action: 'VENTA', module: 'Punto de Venta', detail: `${sale.invoiceNumber} por ${sale.total.toFixed(2)} (${paymentMethod})` })
 
     return ok(sale)
   } catch (e) {

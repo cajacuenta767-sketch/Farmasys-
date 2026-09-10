@@ -54,3 +54,30 @@ Stage Summary:
 - Cadena de trazabilidad completa: venta → FEFO → kardex → controlados → caja
 - Credenciales: admin/admin123, farmacia/farm123, vendedor/venta123
 - Verificado end-to-end con navegador (desktop y móvil)
+
+---
+Task ID: 3
+Agent: main (Super Z)
+Task: Revisión integral + Fase 3 de mejoras: seguridad, auditoría, clínica, POS avanzado e inventario profesional (20 → 24 módulos)
+
+Work Log:
+- Revisión completa del código (schema, 22 APIs, 20 vistas) identificando brechas vs sistemas reales de farmacia
+- Esquema Prisma ampliado a 26 modelos: AuditLog, DrugInteraction, InventoryCount(+Item), PrescriptionItem + campos nuevos (User.lastLoginAt, Customer.points, Sale.paidCash/paidCard/paidTransfer/pointsEarned/pointsRedeemed, Prescription.status/prescriptionDate)
+- SEGURIDAD: contraseñas hasheadas con SHA-256+salt (lib/security.ts) con migración automática de legacy al hacer login; cambio de contraseña propia desde el sidebar; API auth/change-password y auth/logout
+- AUDITORÍA: Bitácora con registro automático en login/logout/ventas/anulaciones/compras/recetas/productos/usuarios/conteos/configuración; vista con filtros por acción y búsqueda (solo ADMIN)
+- CLÍNICA: 5 interacciones medicamentosas reales sembradas (ibuprofeno+aspirina GRAVE, diazepam+tramadol GRAVE, etc.); vista de gestión (CRUD + activar/desactivar); POS advierte al agregar productos incompatibles (toast + caja en carrito con severidad)
+- POS: pagos mixtos (efectivo+tarjeta+transferencia con validación de suma y desglose en recibo), promociones automáticas aplicadas por línea (muestra nombre de la promo), programa de lealtad (1 pt/$10, canje 1pt=$0.10, reversión en anulación), folio de receta integrado
+- DISPENSACIÓN DE RECETAS: recetas con items prescritos; al vender con folio, los items se marcan dispensados automáticamente y la receta pasa a PARCIAL/DISPENSADA; vista rediseñada con estado y detalle
+- CONTEO FÍSICO: tomas de inventario con snapshot de lotes, captura de cantidades, filtro "solo diferencias", aplicación ajusta lotes y genera AJUSTE en kardex (probado CON-0001: +2 sobrante ajustado)
+- SUGERENCIAS DE COMPRA: cálculo automático con stock mín./venta promedio 30d/cobertura en días; urgencias AGOTADO→BAJA; agrupado por proveedor; genera órdenes OC-0003 verificada
+- DASHBOARD: ventas por hora (7 días) con hora pico, comparación vs ayer (+/-%) en KPI
+- REPORTES: nueva pestaña Valorización de inventario (costo/venta/margen + por categoría); export CSV agregado a Ventas
+- CONFIG: respaldo JSON completo descargable (62KB probado); usuarios muestran último acceso
+- Seed actualizado: contraseñas hash, 5 interacciones, puntos de clientes, 2 recetas (RC-0002 pendiente para probar dispensación), RC con items
+- Verificación end-to-end: venta MIXTO FV-00019 con canje 50pts ($19.60, cambio $2.40, desglose en recibo), RC-0002 → DISPENSADA automática, caja registra solo parte en efectivo ($1.76), conteo ajusta kardex, orden desde sugerencias, bitácora completa, móvil 390px OK
+- Lint limpio, sin errores en dev.log, HTTP 200
+
+Stage Summary:
+- Sistema de farmacias con 24 MÓDULOS, 30 rutas API, 26 tablas, 3 roles (24/23/9 módulos)
+- Fase 3 cerrada: seguridad profesional, trazabilidad clínica y operativa completa
+- Credenciales: admin/admin123, farmacia/farm123, vendedor/venta123

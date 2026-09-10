@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { SessionUser } from '@/lib/pharmacy-types'
 import { canAccess, MODULES_BY_ROLE } from '@/lib/pharmacy-types'
+import { api_logout, api_changePassword } from '@/lib/pharmacy-client'
 import { LoginView } from '@/components/pharmacy/login-view'
 import { DashboardView } from '@/components/pharmacy/dashboard-view'
 import { PosView } from '@/components/pharmacy/pos-view'
@@ -26,14 +27,21 @@ import { QuotationsView } from '@/components/pharmacy/quotations-view'
 import { PromotionsView } from '@/components/pharmacy/promotions-view'
 import { ReturnsView } from '@/components/pharmacy/returns-view'
 import { CategoriesView } from '@/components/pharmacy/categories-view'
+import { InteractionsView } from '@/components/pharmacy/interactions-view'
+import { CountsView } from '@/components/pharmacy/counts-view'
+import { SuggestionsView } from '@/components/pharmacy/suggestions-view'
+import { AuditView } from '@/components/pharmacy/audit-view'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import {
   Cross, LayoutDashboard, ShoppingCart, Pill, Warehouse, ReceiptText,
   ClipboardList, Truck, Users, FileHeart, BarChart3, UserCog, Settings,
   LogOut, Menu, ChevronRight, Wallet, BellRing, ArrowLeftRight, ShieldAlert,
-  FileText, Undo2, Percent, Tags,
+  FileText, Undo2, Percent, Tags, FlaskConical, ClipboardCheck, Lightbulb, History, KeyRound,
 } from 'lucide-react'
 
 const NAV = [
@@ -44,17 +52,21 @@ const NAV = [
   { id: 'quotations', label: 'Cotizaciones', icon: FileText, group: 'Operación' },
   { id: 'returns', label: 'Devoluciones', icon: Undo2, group: 'Operación' },
   { id: 'prescriptions', label: 'Recetas Médicas', icon: FileHeart, group: 'Operación' },
+  { id: 'interactions', label: 'Interacciones', icon: FlaskConical, group: 'Clínica' },
+  { id: 'controlled', label: 'Medicamentos Controlados', icon: ShieldAlert, group: 'Clínica' },
   { id: 'products', label: 'Medicamentos', icon: Pill, group: 'Inventario' },
   { id: 'categories', label: 'Categorías', icon: Tags, group: 'Inventario' },
   { id: 'promotions', label: 'Promociones', icon: Percent, group: 'Inventario' },
   { id: 'inventory', label: 'Inventario y Lotes', icon: Warehouse, group: 'Inventario' },
+  { id: 'counts', label: 'Conteo Físico', icon: ClipboardCheck, group: 'Inventario' },
   { id: 'movements', label: 'Kardex de Movimientos', icon: ArrowLeftRight, group: 'Inventario' },
   { id: 'alerts', label: 'Centro de Alertas', icon: BellRing, group: 'Inventario' },
   { id: 'purchases', label: 'Compras', icon: ClipboardList, group: 'Inventario' },
+  { id: 'suggestions', label: 'Sugerencias de Compra', icon: Lightbulb, group: 'Inventario' },
   { id: 'suppliers', label: 'Proveedores', icon: Truck, group: 'Directorio' },
   { id: 'customers', label: 'Clientes', icon: Users, group: 'Directorio' },
-  { id: 'controlled', label: 'Medicamentos Controlados', icon: ShieldAlert, group: 'Administración' },
   { id: 'reports', label: 'Reportes', icon: BarChart3, group: 'Administración' },
+  { id: 'audit', label: 'Bitácora de Auditoría', icon: History, group: 'Administración' },
   { id: 'users', label: 'Usuarios y Roles', icon: UserCog, group: 'Administración' },
   { id: 'settings', label: 'Configuración', icon: Settings, group: 'Administración' },
 ] as const
@@ -68,6 +80,9 @@ export default function Home() {
   const [module, setModule] = useState('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
   const [dashKey, setDashKey] = useState(0)
+  const [pwOpen, setPwOpen] = useState(false)
+  const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
+  const [pwSaving, setPwSaving] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -88,6 +103,7 @@ export default function Home() {
   }
 
   function logout() {
+    api_logout(user?.id, user?.name)
     setUser(null)
     localStorage.removeItem(SESSION_KEY)
   }
@@ -96,6 +112,26 @@ export default function Home() {
     setModule(m)
     setMenuOpen(false)
     if (m === 'dashboard') setDashKey((k) => k + 1)
+  }
+
+  async function changePassword() {
+    if (!pwForm.current || !pwForm.next || !pwForm.confirm) {
+      toast({ title: 'Complete todos los campos', variant: 'destructive' }); return
+    }
+    if (pwForm.next !== pwForm.confirm) {
+      toast({ title: 'Las contraseñas no coinciden', variant: 'destructive' }); return
+    }
+    setPwSaving(true)
+    try {
+      await api_changePassword(user!.username, pwForm.current, pwForm.next)
+      toast({ title: 'Contraseña actualizada', description: 'Úsela la próxima vez que inicie sesión' })
+      setPwOpen(false)
+      setPwForm({ current: '', next: '', confirm: '' })
+    } catch (e) {
+      toast({ title: 'Error', description: e instanceof Error ? e.message : 'No se pudo cambiar la contraseña', variant: 'destructive' })
+    } finally {
+      setPwSaving(false)
+    }
   }
 
   const visibleNav = useMemo(() => {
@@ -170,6 +206,12 @@ export default function Home() {
           <p className="text-xs text-emerald-300">{roleLabel}</p>
         </div>
         <button
+          onClick={() => setPwOpen(true)}
+          className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-emerald-100/90 hover:bg-white/5 hover:text-white transition-colors"
+        >
+          <KeyRound className="h-4 w-4" /> Cambiar contraseña
+        </button>
+        <button
           onClick={logout}
           className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-500/10 hover:text-red-200 transition-colors"
         >
@@ -215,11 +257,14 @@ export default function Home() {
             {module === 'cash' && <CashView user={user} />}
             {module === 'products' && <ProductsView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
             {module === 'inventory' && <InventoryView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
-            {module === 'sales' && <SalesView canVoid={user.role === 'ADMIN'} />}
+            {module === 'sales' && <SalesView user={user} canVoid={user.role === 'ADMIN'} />}
             {module === 'purchases' && <PurchasesView user={user} canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
+            {module === 'suggestions' && <SuggestionsView user={user} onCreated={() => setDashKey((k) => k + 1)} />}
             {module === 'suppliers' && <SuppliersView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
             {module === 'customers' && <CustomersView />}
-            {module === 'prescriptions' && <PrescriptionsView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
+            {module === 'prescriptions' && <PrescriptionsView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} userName={user.name} />}
+            {module === 'interactions' && <InteractionsView user={user} />}
+            {module === 'counts' && <CountsView user={user} />}
             {module === 'reports' && <ReportsView />}
             {module === 'users' && user.role === 'ADMIN' && <UsersView currentUserId={user.id} />}
             {module === 'settings' && user.role === 'ADMIN' && <SettingsView />}
@@ -230,13 +275,43 @@ export default function Home() {
             {module === 'promotions' && <PromotionsView />}
             {module === 'returns' && <ReturnsView user={user} canEdit={true} />}
             {module === 'categories' && <CategoriesView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
+            {module === 'audit' && user.role === 'ADMIN' && <AuditView />}
           </main>
 
           <footer className="mt-auto border-t bg-white py-3 text-center text-xs text-muted-foreground">
-            FarmaSys © 2026 — Sistema Integral de Farmacias · Sesión: {user.name} ({roleLabel}) · Módulos activos: {(MODULES_BY_ROLE[user.role] || []).length}
+            FarmaSys © 2026 — Sistema Integral de Farmacias · Sesión: {user.name} ({roleLabel}) · Módulos activos: {(MODULES_BY_ROLE[user.role] || []).length} de 24
           </footer>
         </div>
       </div>
+
+      {/* Cambiar contraseña propia */}
+      <Dialog open={pwOpen} onOpenChange={setPwOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-emerald-600" /> Cambiar mi contraseña</DialogTitle>
+            <DialogDescription>Sesión de {user.name} (@{user.username})</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="space-y-1">
+              <Label>Contraseña actual</Label>
+              <Input type="password" value={pwForm.current} onChange={(e) => setPwForm({ ...pwForm, current: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label>Nueva contraseña</Label>
+              <Input type="password" value={pwForm.next} onChange={(e) => setPwForm({ ...pwForm, next: e.target.value })} />
+              <p className="text-[11px] text-muted-foreground">Mínimo 6 caracteres</p>
+            </div>
+            <div className="space-y-1">
+              <Label>Confirmar nueva contraseña</Label>
+              <Input type="password" value={pwForm.confirm} onChange={(e) => setPwForm({ ...pwForm, confirm: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPwOpen(false)}>Cancelar</Button>
+            <Button onClick={changePassword} disabled={pwSaving} className="bg-emerald-600 hover:bg-emerald-700">{pwSaving ? 'Guardando...' : 'Actualizar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

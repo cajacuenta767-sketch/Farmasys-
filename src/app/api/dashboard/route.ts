@@ -79,6 +79,34 @@ export async function GET() {
     // Pendientes: compras por recibir
     const pendingPurchases = await db.purchase.count({ where: { status: 'PENDIENTE' } })
 
+    // Ventas por hora (últimos 7 días) para detectar horas pico
+    const weekAgo = new Date(now)
+    weekAgo.setDate(weekAgo.getDate() - 7)
+    const weekSales = await db.sale.findMany({
+      where: { status: 'COMPLETADA', createdAt: { gte: weekAgo } },
+      select: { createdAt: true, total: true },
+    })
+    const hourMap: Record<number, { hour: number; total: number; count: number }> = {}
+    for (const s of weekSales) {
+      const h = s.createdAt.getHours()
+      if (!hourMap[h]) hourMap[h] = { hour: h, total: 0, count: 0 }
+      hourMap[h].total += s.total
+      hourMap[h].count += 1
+    }
+    const byHour = Array.from({ length: 24 }, (_, h) => ({
+      hour: `${String(h).padStart(2, '0')}h`,
+      total: Math.round((hourMap[h]?.total || 0) * 100) / 100,
+      count: hourMap[h]?.count || 0,
+    })).filter((x) => x.count > 0)
+
+    // Comparación con ayer
+    const startYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    const yesterdayAgg = await db.sale.aggregate({
+      _sum: { total: true },
+      _count: true,
+      where: { status: 'COMPLETADA', createdAt: { gte: startYesterday, lt: startToday } },
+    })
+
     return ok({
       todayTotal: todaySales._sum.total || 0,
       todayCount,
@@ -107,6 +135,9 @@ export async function GET() {
         customer: s.customer?.name || s.customerName || 'Cliente Ocasional',
       })),
       pendingPurchases,
+      byHour,
+      yesterdayTotal: yesterdayAgg._sum.total || 0,
+      yesterdayCount: yesterdayAgg._count,
     })
   } catch (e) {
     console.error('dashboard error', e)

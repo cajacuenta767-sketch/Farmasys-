@@ -4,6 +4,7 @@ import type {
   Prescription, SystemUser, Category,
   CashSession, CashMovement, InventoryMovement, ControlledLog,
   Quotation, Promotion, ReturnRecord, AlertsData,
+  DrugInteraction, InventoryCount, SuggestionsData, AuditLogEntry,
 } from './pharmacy-types'
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
@@ -39,6 +40,12 @@ export const daysUntil = (d: string | Date) => {
 export const api_login = (username: string, password: string) =>
   api<SessionUser>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })
 
+export const api_logout = (userId?: string, userName?: string) =>
+  api<{ success: boolean }>('/api/auth/logout', { method: 'POST', body: JSON.stringify({ userId, userName }) }).catch(() => undefined)
+
+export const api_changePassword = (username: string, currentPassword: string, newPassword: string) =>
+  api<{ success: boolean }>('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ username, currentPassword, newPassword }) })
+
 export const api_dashboard = () => api<DashboardData>('/api/dashboard')
 
 export const api_products = (params = '') => api<Product[]>(`/api/products${params ? `?${params}` : ''}`)
@@ -60,12 +67,15 @@ export const api_deleteLot = (id: string) => api<{ success: boolean }>(`/api/lot
 export const api_sales = (params = '') => api<Sale[]>(`/api/sales${params ? `?${params}` : ''}`)
 export const api_createSale = (s: Record<string, unknown>) => api<Sale>('/api/sales', { method: 'POST', body: JSON.stringify(s) })
 export const api_getSale = (id: string) => api<Sale>(`/api/sales/${id}`)
-export const api_voidSale = (id: string, reason: string) => api<{ success: boolean }>(`/api/sales/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) })
+export const api_voidSale = (id: string, reason: string, userName?: string) =>
+  api<{ success: boolean }>(`/api/sales/${id}/void`, { method: 'POST', body: JSON.stringify({ reason, userName }) })
 
 export const api_purchases = (params = '') => api<Purchase[]>(`/api/purchases${params ? `?${params}` : ''}`)
 export const api_createPurchase = (p: Record<string, unknown>) => api<Purchase>('/api/purchases', { method: 'POST', body: JSON.stringify(p) })
-export const api_receivePurchase = (id: string) => api<{ success: boolean }>(`/api/purchases/${id}/receive`, { method: 'POST' })
-export const api_cancelPurchase = (id: string) => api<{ success: boolean }>(`/api/purchases/${id}/cancel`, { method: 'POST' })
+export const api_receivePurchase = (id: string, userName?: string) =>
+  api<{ success: boolean }>(`/api/purchases/${id}/receive?userName=${encodeURIComponent(userName || 'Usuario')}`, { method: 'POST' })
+export const api_cancelPurchase = (id: string, userName?: string) =>
+  api<{ success: boolean }>(`/api/purchases/${id}/cancel?userName=${encodeURIComponent(userName || 'Usuario')}`, { method: 'POST' })
 
 export const api_customers = (search = '') => api<Customer[]>(`/api/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`)
 export const api_createCustomer = (c: Partial<Customer>) => api<Customer>('/api/customers', { method: 'POST', body: JSON.stringify(c) })
@@ -78,7 +88,7 @@ export const api_updateSupplier = (id: string, s: Partial<Supplier>) => api<Supp
 export const api_deleteSupplier = (id: string) => api<{ success: boolean }>(`/api/suppliers/${id}`, { method: 'DELETE' })
 
 export const api_prescriptions = () => api<Prescription[]>('/api/prescriptions')
-export const api_createPrescription = (p: Partial<Prescription>) => api<Prescription>('/api/prescriptions', { method: 'POST', body: JSON.stringify(p) })
+export const api_createPrescription = (p: Record<string, unknown>) => api<Prescription>('/api/prescriptions', { method: 'POST', body: JSON.stringify(p) })
 
 export const api_users = () => api<SystemUser[]>('/api/users')
 export const api_createUser = (u: Partial<SystemUser> & { password?: string }) => api<SystemUser>('/api/users', { method: 'POST', body: JSON.stringify(u) })
@@ -143,6 +153,53 @@ export const api_returns = () => api<ReturnRecord[]>('/api/returns')
 export const api_createReturn = (r: { saleId: string; reason: string; userId: string; itemIds?: string[] }) =>
   api<ReturnRecord>('/api/returns', { method: 'POST', body: JSON.stringify(r) })
 
+// ===== INTERACCIONES MEDICAMENTOSAS =====
+export const api_interactions = (all = false) => api<DrugInteraction[]>(`/api/drug-interactions${all ? '?all=1' : ''}`)
+export const api_createInteraction = (i: Record<string, unknown>) =>
+  api<DrugInteraction>('/api/drug-interactions', { method: 'POST', body: JSON.stringify(i) })
+export const api_updateInteraction = (id: string, i: Record<string, unknown>) =>
+  api<DrugInteraction>(`/api/drug-interactions/${id}`, { method: 'PUT', body: JSON.stringify(i) })
+export const api_deleteInteraction = (id: string, userName?: string) =>
+  api<{ success: boolean }>(`/api/drug-interactions/${id}?userName=${encodeURIComponent(userName || 'Usuario')}`, { method: 'DELETE' })
+
+// ===== CONTEO FÍSICO DE INVENTARIO =====
+export const api_counts = () => api<InventoryCount[]>('/api/inventory-counts')
+export const api_createCount = (c: { userId: string; notes?: string; categoryId?: string }) =>
+  api<InventoryCount>('/api/inventory-counts', { method: 'POST', body: JSON.stringify(c) })
+export const api_getCount = (id: string) => api<InventoryCount>(`/api/inventory-counts/${id}`)
+export const api_countAction = (id: string, action: 'GUARDAR' | 'APLICAR' | 'CANCELAR', items?: { id: string; countedQty: number }[], userName?: string) =>
+  api<InventoryCount | { success: boolean }>(`/api/inventory-counts/${id}`, { method: 'POST', body: JSON.stringify({ action, items: items || [], userName }) })
+
+// ===== SUGERENCIAS DE COMPRA =====
+export const api_suggestions = () => api<SuggestionsData>('/api/purchase-suggestions')
+
+// ===== BITÁCORA DE AUDITORÍA =====
+export const api_audit = (params = '') => api<AuditLogEntry[]>(`/api/audit${params ? `?${params}` : ''}`)
+
+// ===== RESPALDO DE DATOS =====
+export async function downloadBackup() {
+  const data = await api<Record<string, unknown>>('/api/backup')
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `farmasys-backup-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+}
+
+// Exportar una tabla HTML como CSV (BOM para Excel)
+export function exportTableCsv(id: string, filename: string) {
+  const table = document.getElementById(id)
+  if (!table) return
+  const rows = Array.from(table.querySelectorAll('tr')).map((tr) =>
+    Array.from(tr.querySelectorAll('th,td')).map((c) => `"${(c.textContent || '').replace(/"/g, '""')}"`).join(',')
+  )
+  const blob = new Blob(['\ufeff' + rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = filename
+  a.click()
+}
+
 // Tipos de datos del dashboard y reportes
 export interface DashboardData {
   todayTotal: number
@@ -157,6 +214,9 @@ export interface DashboardData {
   topProducts: { name: string; qty: number; total: number }[]
   recentSales: { id: string; invoiceNumber: string; total: number; createdAt: string; seller: string; customer: string }[]
   pendingPurchases: number
+  byHour?: { hour: string; total: number; count: number }[]
+  yesterdayTotal?: number
+  yesterdayCount?: number
 }
 
 export interface ReportData {
@@ -169,4 +229,10 @@ export interface ReportData {
   rows?: { lotNumber: string; expiryDate: string; quantity: number; daysLeft: number; code: string; productName: string; category?: string; value: number }[]
   expiredCount?: number
   expiredValue?: number
+  valuation?: {
+    rows: { code: string; name: string; category?: string; stock: number; avgCost: number; costValue: number; saleValue: number; marginPct: number }[]
+    totalCost: number
+    totalSale: number
+    byCategory: { category: string; costValue: number; saleValue: number; products: number }[]
+  }
 }

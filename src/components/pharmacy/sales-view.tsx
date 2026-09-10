@@ -2,8 +2,8 @@
 
 // Historial de Ventas y Facturación
 import { useCallback, useEffect, useState } from 'react'
-import { api_sales, api_getSale, api_voidSale, fmtMoney, fmtDateTime } from '@/lib/pharmacy-client'
-import type { Sale } from '@/lib/pharmacy-types'
+import { api_sales, api_getSale, api_voidSale, fmtMoney, fmtDateTime, exportTableCsv } from '@/lib/pharmacy-client'
+import type { Sale, SessionUser } from '@/lib/pharmacy-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,12 +15,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
-import { Search, Eye, Ban, FileText, ReceiptText } from 'lucide-react'
+import { Search, Eye, Ban, FileText, ReceiptText, FileDown } from 'lucide-react'
 
 const monthAgo = () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10) }
 const today = () => new Date().toISOString().slice(0, 10)
 
-export function SalesView({ canVoid }: { canVoid: boolean }) {
+export function SalesView({ user, canVoid }: { user: SessionUser; canVoid: boolean }) {
   const { toast } = useToast()
   const [sales, setSales] = useState<Sale[]>([])
   const [search, setSearch] = useState('')
@@ -57,7 +57,7 @@ export function SalesView({ canVoid }: { canVoid: boolean }) {
     if (!toVoid) return
     setSaving(true)
     try {
-      await api_voidSale(toVoid.id, voidReason)
+      await api_voidSale(toVoid.id, voidReason, user.name)
       toast({ title: 'Venta anulada', description: 'El stock fue devuelto al inventario' })
       setToVoid(null)
       setVoidReason('')
@@ -72,9 +72,12 @@ export function SalesView({ canVoid }: { canVoid: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Ventas y Facturación</h1>
-        <p className="text-muted-foreground text-sm">{sales.length} facturas · Total completadas: {fmtMoney(totalShown)}</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Ventas y Facturación</h1>
+          <p className="text-muted-foreground text-sm">{sales.length} facturas · Total completadas: {fmtMoney(totalShown)}</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => exportTableCsv('tbl-sales', `ventas-${today()}.csv`)}><FileDown className="h-4 w-4 mr-1" /> Exportar CSV</Button>
       </div>
 
       <Card>
@@ -99,7 +102,7 @@ export function SalesView({ canVoid }: { canVoid: boolean }) {
             </div>
           </div>
 
-          <div className="rounded-lg border overflow-x-auto">
+          <div id="tbl-sales" className="rounded-lg border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

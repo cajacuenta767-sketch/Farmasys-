@@ -1,11 +1,13 @@
 import { db } from '@/lib/db'
 import { ok, bad, num } from '@/lib/api-helpers'
+import { logAudit } from '@/lib/audit'
 
 // POST /api/purchases/[id]/receive — Recibir mercancía: crea/actualiza lotes e ingresa al inventario
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const userId = new URL(req.url).searchParams.get('userId') || undefined
+    const userName = new URL(req.url).searchParams.get('userName') || 'Usuario'
     const purchase = await db.purchase.findUnique({ where: { id }, include: { items: true, user: { select: { id: true } } } })
     if (!purchase) return bad('Compra no encontrada', 404)
     if (purchase.status !== 'PENDIENTE') return bad('Esta compra ya fue procesada')
@@ -70,6 +72,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         data: { status: 'RECIBIDA', receivedAt: new Date() },
       })
     })
+
+    await logAudit({ userId: operatorId, userName, action: 'COMPRA', module: 'Inventario', detail: `Compra ${purchase.orderNumber} recibida (${purchase.items.length} ítems) — lotes ingresados al inventario` })
 
     return ok({ success: true })
   } catch (e) {

@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { ok, bad, str } from '@/lib/api-helpers'
+import { logAudit } from '@/lib/audit'
 
 // POST /api/sales/[id]/void — Anular venta y devolver stock a los lotes
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -7,6 +8,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params
     const b = await req.json().catch(() => ({}))
     const reason = str(b.reason)
+    const actor = str(b.userName) || 'Usuario'
 
     const sale = await db.sale.findUnique({ where: { id }, include: { items: true } })
     if (!sale) return bad('Venta no encontrada', 404)
@@ -58,11 +60,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           }
         }
       }
+      // Revertir puntos de lealtad: quitar ganados, devolver canjeados
+      if (sale.customerId && (sale.pointsEarned > 0 || sale.pointsRedeemed > 0)) {
+        const cust = await tx.customer.findUnique({ where: { id: sale.customerId } })
+        if (cust) {
+          await tx.customer.update({
+            where: { id: cust.id },
+            data: { points: Math.max(0, cust.points - sale.pointsEarned + sale.pointsRedeemed) },
+          })
+        }
+      }
       await tx.sale.update({
         where: { id },
         data: { status: 'ANULADA', voidReason: reason || 'Anulada por el usuario' },
       })
     })
+
+    await logAudit({ userId: sale.userId, userName: actor, action: 'ANULACION', module: 'Ventas', detail: `Venta ${sale.invoiceNumber} anulada por ${sale.total.toFixed(2)}. Motivo: ${reason || 'no indicado'}` })
 
     return ok({ success: true })
   } catch (e) {

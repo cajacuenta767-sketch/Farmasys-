@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Pencil, Trash2, Users, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, Search, Star } from 'lucide-react'
 
 const empty = { name: '', document: '', phone: '', email: '', address: '', notes: '' }
 
@@ -97,7 +97,14 @@ export function CustomersView() {
                     <p className="text-xs text-muted-foreground">{c.document || 'Sin documento'}</p>
                   </div>
                 </div>
-                <span className="text-[10px] bg-slate-100 rounded px-1.5 py-0.5 shrink-0">{c._count?.sales ?? 0} compras</span>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="text-[10px] bg-slate-100 rounded px-1.5 py-0.5">{c._count?.sales ?? 0} compras</span>
+                  {(c.points ?? 0) > 0 && (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 font-medium flex items-center gap-0.5">
+                      <Star className="h-2.5 w-2.5" /> {c.points} pts
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="mt-3 space-y-1 text-sm text-muted-foreground">
                 {c.phone && <p>📞 {c.phone}</p>}

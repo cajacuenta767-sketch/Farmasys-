@@ -2,14 +2,14 @@
 
 // Configuración de la Farmacia
 import { useCallback, useEffect, useState } from 'react'
-import { api_settings, api_saveSettings } from '@/lib/pharmacy-client'
+import { api_settings, api_saveSettings, downloadBackup } from '@/lib/pharmacy-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
-import { Save, Store, Percent, ReceiptText } from 'lucide-react'
+import { Save, Store, Percent, ReceiptText, DatabaseBackup, ShieldCheck } from 'lucide-react'
 
 const DEFAULTS: Record<string, string> = {
   pharmacyName: '', taxId: '', address: '', phone: '', email: '',
@@ -20,12 +20,25 @@ export function SettingsView() {
   const { toast } = useToast()
   const [form, setForm] = useState<Record<string, string>>(DEFAULTS)
   const [saving, setSaving] = useState(false)
+  const [backingUp, setBackingUp] = useState(false)
 
   const load = useCallback(async () => {
     const s = await api_settings()
     setForm({ ...DEFAULTS, ...s })
   }, [])
   useEffect(() => { load().catch(() => {}) }, [load])
+
+  async function backup() {
+    setBackingUp(true)
+    try {
+      await downloadBackup()
+      toast({ title: 'Respaldo descargado', description: 'Archivo JSON con todos los datos del sistema' })
+    } catch {
+      toast({ title: 'Error generando el respaldo', variant: 'destructive' })
+    } finally {
+      setBackingUp(false)
+    }
+  }
 
   async function save() {
     setSaving(true)
@@ -82,7 +95,11 @@ export function SettingsView() {
         </Card>
       </div>
 
-      <Button onClick={save} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700"><Save className="h-4 w-4 mr-2" /> {saving ? 'Guardando...' : 'Guardar configuración'}</Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={save} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700"><Save className="h-4 w-4 mr-2" /> {saving ? 'Guardando...' : 'Guardar configuración'}</Button>
+        <Button variant="outline" onClick={backup} disabled={backingUp}><DatabaseBackup className="h-4 w-4 mr-2" /> {backingUp ? 'Generando...' : 'Descargar respaldo (JSON)'}</Button>
+        <p className="text-xs text-muted-foreground flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> Se recomienda respaldar la base de datos semanalmente</p>
+      </div>
     </div>
   )
 }

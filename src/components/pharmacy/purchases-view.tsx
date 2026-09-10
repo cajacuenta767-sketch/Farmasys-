@@ -86,7 +86,7 @@ export function PurchasesView({ user, canEdit }: { user: SessionUser; canEdit: b
     if (!toReceive) return
     setSaving(true)
     try {
-      await api_receivePurchase(toReceive.id)
+      await api_receivePurchase(toReceive.id, user.name)
       toast({ title: 'Mercancía recibida', description: 'Los lotes ingresaron al inventario' })
       setToReceive(null)
       await load()
@@ -100,7 +100,7 @@ export function PurchasesView({ user, canEdit }: { user: SessionUser; canEdit: b
   async function confirmCancel() {
     if (!toCancel) return
     try {
-      await api_cancelPurchase(toCancel.id)
+      await api_cancelPurchase(toCancel.id, user.name)
       toast({ title: 'Orden cancelada' })
       setToCancel(null)
       await load()

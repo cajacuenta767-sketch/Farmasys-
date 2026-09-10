@@ -120,6 +120,52 @@ export async function GET(req: Request) {
       return ok({ rows, expiredCount: expired.length, expiredValue: expired.reduce((s, r) => s + r.value, 0) })
     }
 
+    if (type === 'valorizacion') {
+      const products = await db.product.findMany({
+        where: { active: true },
+        include: {
+          lots: { where: { quantity: { gt: 0 } } },
+          category: { select: { name: true } },
+        },
+      })
+      type ValRow = { code: string; name: string; category?: string; stock: number; avgCost: number; costValue: number; saleValue: number; marginPct: number }
+      const rows: ValRow[] = []
+      for (const p of products) {
+        const stock = p.lots.reduce((s, l) => s + l.quantity, 0)
+        if (stock === 0 && p.lots.length === 0) continue
+        const totalQty = p.lots.reduce((s, l) => s + l.quantity, 0)
+        const avgCost = totalQty > 0 ? p.lots.reduce((s, l) => s + l.quantity * l.purchasePrice, 0) / totalQty : p.purchasePrice
+        const costValue = Math.round(stock * avgCost * 100) / 100
+        const saleValue = Math.round(stock * p.salePrice * 100) / 100
+        rows.push({
+          code: p.code,
+          name: p.name,
+          category: p.category?.name,
+          stock,
+          avgCost: Math.round(avgCost * 100) / 100,
+          costValue,
+          saleValue,
+          marginPct: costValue > 0 ? Math.round(((saleValue - costValue) / costValue) * 100) : 0,
+        })
+      }
+      const catMap: Record<string, { category: string; costValue: number; saleValue: number; products: number }> = {}
+      for (const r of rows) {
+        const k = r.category || 'Sin categoría'
+        if (!catMap[k]) catMap[k] = { category: k, costValue: 0, saleValue: 0, products: 0 }
+        catMap[k].costValue += r.costValue
+        catMap[k].saleValue += r.saleValue
+        catMap[k].products += 1
+      }
+      return ok({
+        valuation: {
+          rows: rows.sort((a, b) => b.costValue - a.costValue),
+          totalCost: Math.round(rows.reduce((s, r) => s + r.costValue, 0) * 100) / 100,
+          totalSale: Math.round(rows.reduce((s, r) => s + r.saleValue, 0) * 100) / 100,
+          byCategory: Object.values(catMap).sort((a, b) => b.costValue - a.costValue),
+        },
+      })
+    }
+
     return bad('Tipo de reporte inválido')
   } catch (e) {
     console.error('reports GET', e)

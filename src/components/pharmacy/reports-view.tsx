@@ -23,19 +23,22 @@ export function ReportsView() {
   const [topRep, setTopRep] = useState<ReportData | null>(null)
   const [lowRep, setLowRep] = useState<ReportData | null>(null)
   const [expRep, setExpRep] = useState<ReportData | null>(null)
+  const [valRep, setValRep] = useState<ReportData | null>(null)
   const [tab, setTab] = useState('ventas')
 
   const load = useCallback(async (f: string, t: string) => {
-    const [s, tp, low, exp] = await Promise.all([
+    const [s, tp, low, exp, val] = await Promise.all([
       api_report('ventas', f, t),
       api_report('top-productos', f, t),
       api_report('stock-bajo'),
       api_report('vencimientos'),
+      api_report('valorizacion'),
     ])
     setSalesRep(s)
     setTopRep(tp)
     setLowRep(low)
     setExpRep(exp)
+    setValRep(val)
   }, [])
 
   useEffect(() => {
@@ -75,6 +78,7 @@ export function ReportsView() {
         <TabsList className="flex-wrap">
           <TabsTrigger value="ventas">Ventas</TabsTrigger>
           <TabsTrigger value="top">Top productos</TabsTrigger>
+          <TabsTrigger value="valorizacion">Valorización</TabsTrigger>
           <TabsTrigger value="stock">Stock bajo</TabsTrigger>
           <TabsTrigger value="vencimientos">Vencimientos</TabsTrigger>
         </TabsList>
@@ -169,6 +173,36 @@ export function ReportsView() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="valorizacion" className="space-y-4 mt-4">
+          {valRep?.valuation && (
+            <>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Valor a costo (inversión)</p><p className="text-xl font-bold text-emerald-700">{fmtMoney(valRep.valuation.totalCost)}</p></CardContent></Card>
+                <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Valor a precio de venta</p><p className="text-xl font-bold">{fmtMoney(valRep.valuation.totalSale)}</p></CardContent></Card>
+                <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Margen bruto potencial</p><p className="text-xl font-bold text-teal-700">{fmtMoney(valRep.valuation.totalSale - valRep.valuation.totalCost)}</p></CardContent></Card>
+              </div>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Valorización por categoría</CardTitle></CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Categoría</TableHead><TableHead className="text-center">Productos</TableHead><TableHead className="text-right">Valor a costo</TableHead><TableHead className="text-right">Valor a venta</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {valRep.valuation.byCategory.map((c) => (
+                        <TableRow key={c.category}>
+                          <TableCell className="font-medium">{c.category}</TableCell>
+                          <TableCell className="text-center">{c.products}</TableCell>
+                          <TableCell className="text-right">{fmtMoney(c.costValue)}</TableCell>
+                          <TableCell className="text-right font-semibold">{fmtMoney(c.saleValue)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="stock" className="mt-4">

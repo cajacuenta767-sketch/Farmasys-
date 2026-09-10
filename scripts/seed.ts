@@ -1,7 +1,11 @@
 // Seed del Sistema de Farmacias
 import { PrismaClient } from '@prisma/client'
+import { createHash } from 'node:crypto'
 
 const prisma = new PrismaClient()
+
+// Hash de contraseñas (mismo algoritmo que lib/security.ts)
+const hashPassword = (pw: string) => createHash('sha256').update(`farmasys::v1::${pw}`).digest('hex')
 
 function daysFromNow(d: number) {
   const dt = new Date()
@@ -11,6 +15,10 @@ function daysFromNow(d: number) {
 
 async function main() {
   console.log('Limpiando base de datos...')
+  await prisma.auditLog.deleteMany()
+  await prisma.drugInteraction.deleteMany()
+  await prisma.inventoryCountItem.deleteMany()
+  await prisma.inventoryCount.deleteMany()
   await prisma.cashMovement.deleteMany()
   await prisma.cashSession.deleteMany()
   await prisma.inventoryMovement.deleteMany()
@@ -19,6 +27,7 @@ async function main() {
   await prisma.quotation.deleteMany()
   await prisma.promotion.deleteMany()
   await prisma.return.deleteMany()
+  await prisma.prescriptionItem.deleteMany()
   await prisma.prescription.deleteMany()
   await prisma.saleItem.deleteMany()
   await prisma.sale.deleteMany()
@@ -36,9 +45,9 @@ async function main() {
   console.log('Creando usuarios...')
   await prisma.user.createMany({
     data: [
-      { username: 'admin', password: 'admin123', name: 'Ana Martínez', role: 'ADMIN', email: 'admin@farmacia.com', phone: '3001112233' },
-      { username: 'farmacia', password: 'farm123', name: 'Carlos Gómez', role: 'FARMACEUTICO', email: 'carlos@farmacia.com', phone: '3004445566' },
-      { username: 'vendedor', password: 'venta123', name: 'Laura Restrepo', role: 'VENDEDOR', email: 'laura@farmacia.com', phone: '3007778899' },
+      { username: 'admin', password: hashPassword('admin123'), name: 'Ana Martínez', role: 'ADMIN', email: 'admin@farmacia.com', phone: '3001112233', lastLoginAt: daysFromNow(-1) },
+      { username: 'farmacia', password: hashPassword('farm123'), name: 'Carlos Gómez', role: 'FARMACEUTICO', email: 'carlos@farmacia.com', phone: '3004445566', lastLoginAt: daysFromNow(-2) },
+      { username: 'vendedor', password: hashPassword('venta123'), name: 'Laura Restrepo', role: 'VENDEDOR', email: 'laura@farmacia.com', phone: '3007778899', lastLoginAt: daysFromNow(-1) },
     ],
   })
 
@@ -191,11 +200,11 @@ async function main() {
   // ===== CLIENTES =====
   console.log('Creando clientes...')
   const customers = await Promise.all([
-    prisma.customer.create({ data: { document: '1023456789', name: 'María Fernanda López', phone: '3112223344', email: 'mflopez@email.com', address: 'Cra 12 #34-56' } }),
-    prisma.customer.create({ data: { document: '1098765432', name: 'Jorge Iván Ramírez', phone: '3123334455', email: 'jramirez@email.com', address: 'Calle 8 #45-67' } }),
-    prisma.customer.create({ data: { document: '52345678', name: 'Carmen Rosa Díaz', phone: '3134445566', email: 'cdiaz@email.com', address: 'Av 5 #23-12' } }),
-    prisma.customer.create({ data: { document: '80123456', name: 'Pedro Pablo Jaramillo', phone: '3145556677', email: 'pjaramillo@email.com', address: 'Cll 70 #12-30' } }),
-    prisma.customer.create({ data: { document: '1039485756', name: 'Valentina Cruz', phone: '3156667788', email: 'vcruz@email.com', address: 'Cra 45 #10-20' } }),
+    prisma.customer.create({ data: { document: '1023456789', name: 'María Fernanda López', phone: '3112223344', email: 'mflopez@email.com', address: 'Cra 12 #34-56', points: 145 } }),
+    prisma.customer.create({ data: { document: '1098765432', name: 'Jorge Iván Ramírez', phone: '3123334455', email: 'jramirez@email.com', address: 'Calle 8 #45-67', points: 62 } }),
+    prisma.customer.create({ data: { document: '52345678', name: 'Carmen Rosa Díaz', phone: '3134445566', email: 'cdiaz@email.com', address: 'Av 5 #23-12', points: 210 } }),
+    prisma.customer.create({ data: { document: '80123456', name: 'Pedro Pablo Jaramillo', phone: '3145556677', email: 'pjaramillo@email.com', address: 'Cll 70 #12-30', points: 38 } }),
+    prisma.customer.create({ data: { document: '1039485756', name: 'Valentina Cruz', phone: '3156667788', email: 'vcruz@email.com', address: 'Cra 45 #10-20', points: 7 } }),
     prisma.customer.create({ data: { name: 'Cliente Ocasional' } }),
   ])
 
@@ -315,17 +324,64 @@ async function main() {
     void sale
   }
 
-  // ===== RECETA DE EJEMPLO =====
+  // ===== RECETA DE EJEMPLO (con items prescritos) =====
   const lastSale = await prisma.sale.findFirst({ orderBy: { createdAt: 'desc' } })
   if (lastSale) {
     await prisma.prescription.create({
       data: {
         folio: 'RC-0001', doctorName: 'Dr. Hernando Vélez', doctorLicense: 'RM 12345',
         patientName: 'María Fernanda López', saleId: lastSale.id, notes: 'Antibiótico por 7 días. No automedicar.',
+        prescriptionDate: daysFromNow(-3), status: 'DISPENSADA',
         createdAt: lastSale.createdAt,
+        items: {
+          create: [
+            { productId: products['MED-003'].id, productName: products['MED-003'].name, quantity: 2, dispensed: true },
+            { productId: products['MED-001'].id, productName: products['MED-001'].name, quantity: 1, dispensed: true },
+          ],
+        },
+      },
+    })
+    // Receta pendiente de dispensación (probar flujo completo en el POS)
+    await prisma.prescription.create({
+      data: {
+        folio: 'RC-0002', doctorName: 'Dra. Sandra Mendoza', doctorLicense: 'RM 54321',
+        patientName: 'Carmen Rosa Díaz', notes: 'Tomar 1 tableta cada 8 horas con alimentos.',
+        prescriptionDate: new Date(), status: 'REGISTRADA',
+        items: {
+          create: [
+            { productId: products['MED-021'].id, productName: products['MED-021'].name, quantity: 1, dispensed: false },
+          ],
+        },
       },
     })
   }
+
+  // ===== INTERACCIONES MEDICAMENTOSAS =====
+  console.log('Creando interacciones medicamentosas...')
+  await prisma.drugInteraction.createMany({
+    data: [
+      {
+        productAId: products['MED-002'].id, productBId: products['MED-025'].id, severity: 'GRAVE',
+        description: 'AINE + ácido acetilsalicílico: riesgo elevado de sangrado gastrointestinal. Evitar uso conjunto o proteger con gastroprotector.',
+      },
+      {
+        productAId: products['MED-021'].id, productBId: products['MED-022'].id, severity: 'GRAVE',
+        description: 'Diazepam + tramadol: depresión del sistema nervioso central severa, riesgo de sedación profunda y depresión respiratoria. No administrar juntos.',
+      },
+      {
+        productAId: products['MED-001'].id, productBId: products['MED-006'].id, severity: 'MODERADA',
+        description: 'Duplicación de acetaminofén (Dolex Gripa ya contiene 500mg): riesgo de hepatotoxicidad. No exceder 4g/día del principio activo.',
+      },
+      {
+        productAId: products['MED-009'].id, productBId: products['MED-002'].id, severity: 'MODERADA',
+        description: 'El ibuprofeno puede reducir el efecto antihipertensivo del losartán y afectar la función renal. Vigilar presión arterial.',
+      },
+      {
+        productAId: products['MED-005'].id, productBId: products['MED-025'].id, severity: 'LEVE',
+        description: 'Ambos medicamentos tienen efecto antiagregante; informar al paciente sobre posibles moretones o sangrado leve.',
+      },
+    ],
+  })
 
   // ===== KARDEX: ENTRADAS DE LA COMPRA RECIBIDA =====
   console.log('Creando entradas de kardex...')
@@ -480,6 +536,8 @@ async function main() {
   console.log(`  - ${await prisma.cashSession.count()} sesiones de caja`)
   console.log(`  - ${await prisma.quotation.count()} cotizaciones`)
   console.log(`  - ${await prisma.promotion.count()} promociones`)
+  console.log(`  - ${await prisma.drugInteraction.count()} interacciones medicamentosas`)
+  console.log(`  - ${await prisma.prescription.count()} recetas`)
   console.log(`  - ${await prisma.return.count()} devoluciones`)
 }
 

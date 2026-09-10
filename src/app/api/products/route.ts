@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { ok, bad, num, int, str } from '@/lib/api-helpers'
+import { logAudit } from '@/lib/audit'
 
 // GET /api/products?search=&categoryId=&rx=&lowStock=&active=
 export async function GET(req: Request) {
@@ -80,6 +81,7 @@ export async function POST(req: Request) {
       },
       include: { category: true, supplier: true },
     })
+    await logAudit({ userName: str(b.userName) || 'Usuario', action: 'PRODUCTO', module: 'Inventario', detail: `Producto creado: ${product.name} (${product.code})` })
     return ok(product)
   } catch (e) {
     console.error('products POST', e)

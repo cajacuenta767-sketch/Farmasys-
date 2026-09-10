@@ -2,7 +2,7 @@
 
 // Gestión de Usuarios y Roles
 import { useCallback, useEffect, useState } from 'react'
-import { api_users, api_createUser, api_updateUser, api_deleteUser } from '@/lib/pharmacy-client'
+import { api_users, api_createUser, api_updateUser, api_deleteUser, fmtDateTime } from '@/lib/pharmacy-client'
 import type { SystemUser } from '@/lib/pharmacy-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -123,6 +123,7 @@ export function UsersView({ currentUserId }: { currentUserId: string }) {
                   <TableHead>Rol</TableHead>
                   <TableHead className="hidden md:table-cell">Contacto</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead className="hidden lg:table-cell">Último acceso</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -140,6 +141,9 @@ export function UsersView({ currentUserId }: { currentUserId: string }) {
                         <Switch checked={u.active} onCheckedChange={() => toggleActive(u)} disabled={u.id === currentUserId} />
                         <span className="text-xs text-muted-foreground">{u.active ? 'Activo' : 'Inactivo'}</span>
                       </div>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
+                      {u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : <span className="opacity-50">Nunca</span>}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">

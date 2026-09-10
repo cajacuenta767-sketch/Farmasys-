@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
 import { ok, bad, str } from '@/lib/api-helpers'
+import { hashPassword } from '@/lib/security'
+import { logAudit } from '@/lib/audit'
 
 // PUT /api/users/[id]
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -8,6 +10,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const b = await req.json()
     const name = str(b.name)
     const role = str(b.role)
+    const actor = str(b.actorName) || 'Sistema'
     if (!name) return bad('El nombre es obligatorio')
     if (role && !['ADMIN', 'FARMACEUTICO', 'VENDEDOR'].includes(role)) return bad('Rol inválido')
 
@@ -19,13 +22,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       active: b.active !== false,
     }
     const password = str(b.password)
-    if (password) data.password = password
+    if (password) {
+      if (password.length < 6) return bad('La contraseña debe tener al menos 6 caracteres')
+      data.password = hashPassword(password)
+    }
 
     const user = await db.user.update({
       where: { id },
       data,
       select: { id: true, username: true, name: true, role: true, email: true, phone: true, active: true },
     })
+    await logAudit({ userName: actor, action: 'USUARIO', module: 'Administración', detail: `Usuario actualizado: ${user.name} (@${user.username})` })
     return ok(user)
   } catch {
     return bad('Error actualizando usuario', 500)

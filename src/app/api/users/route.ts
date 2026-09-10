@@ -1,11 +1,13 @@
 import { db } from '@/lib/db'
 import { ok, bad, str } from '@/lib/api-helpers'
+import { hashPassword } from '@/lib/security'
+import { logAudit } from '@/lib/audit'
 
 // GET /api/users
 export async function GET() {
   try {
     const users = await db.user.findMany({
-      select: { id: true, username: true, name: true, role: true, email: true, phone: true, active: true, createdAt: true },
+      select: { id: true, username: true, name: true, role: true, email: true, phone: true, active: true, lastLoginAt: true, createdAt: true },
       orderBy: { name: 'asc' },
     })
     return ok(users)
@@ -22,7 +24,9 @@ export async function POST(req: Request) {
     const password = str(b.password)
     const name = str(b.name)
     const role = str(b.role) || 'VENDEDOR'
+    const actor = str(b.actorName) || 'Sistema'
     if (!username || !password || !name) return bad('Usuario, contraseña y nombre son obligatorios')
+    if (password.length < 6) return bad('La contraseña debe tener al menos 6 caracteres')
     if (!['ADMIN', 'FARMACEUTICO', 'VENDEDOR'].includes(role)) return bad('Rol inválido')
 
     const exists = await db.user.findUnique({ where: { username } })
@@ -31,7 +35,7 @@ export async function POST(req: Request) {
     const user = await db.user.create({
       data: {
         username,
-        password,
+        password: hashPassword(password),
         name,
         role,
         email: str(b.email) || null,
@@ -39,6 +43,7 @@ export async function POST(req: Request) {
       },
       select: { id: true, username: true, name: true, role: true, email: true, phone: true, active: true },
     })
+    await logAudit({ userName: actor, action: 'USUARIO', module: 'Administración', detail: `Usuario creado: ${name} (@${username}) con rol ${role}` })
     return ok(user)
   } catch {
     return bad('Error creando usuario', 500)

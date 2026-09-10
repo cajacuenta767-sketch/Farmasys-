@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   DollarSign, ShoppingCart, Package, AlertTriangle, CalendarClock,
-  TrendingUp, ClipboardList, PackageCheck,
+  TrendingUp, TrendingDown, ClipboardList, PackageCheck, Clock,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend,
@@ -47,8 +47,19 @@ export function DashboardView({ userName, onNavigate }: { userName: string; onNa
   }
   if (!data) return <p className="text-muted-foreground">No se pudo cargar el panel.</p>
 
+  // Comparación con ayer
+  const ytd = data.yesterdayTotal ?? 0
+  const diffPct = ytd > 0 ? Math.round(((data.todayTotal - ytd) / ytd) * 100) : null
+  const bestHours = (data.byHour || []).slice().sort((a, b) => b.total - a.total).slice(0, 3)
+
   const kpis = [
-    { title: 'Ventas de hoy', value: fmtMoney(data.todayTotal), sub: `${data.todayCount} transacciones`, icon: DollarSign, color: 'text-emerald-600 bg-emerald-100' },
+    {
+      title: 'Ventas de hoy', value: fmtMoney(data.todayTotal),
+      sub: diffPct !== null
+        ? `${data.todayCount} transacciones · ${diffPct >= 0 ? '+' : ''}${diffPct}% vs ayer`
+        : `${data.todayCount} transacciones`,
+      icon: DollarSign, color: 'text-emerald-600 bg-emerald-100',
+    },
     { title: 'Ventas del mes', value: fmtMoney(data.monthTotal), sub: 'Acumulado del mes', icon: TrendingUp, color: 'text-teal-600 bg-teal-100' },
     { title: 'Stock bajo', value: String(data.lowStockCount), sub: 'Productos por reabastecer', icon: AlertTriangle, color: 'text-amber-600 bg-amber-100' },
     { title: 'Por vencer (90 días)', value: String(data.expiringCount), sub: 'Lotes con inventario', icon: CalendarClock, color: 'text-red-600 bg-red-100' },
@@ -76,7 +87,7 @@ export function DashboardView({ userName, onNavigate }: { userName: string; onNa
               <div className="min-w-0">
                 <p className="text-sm text-muted-foreground truncate">{k.title}</p>
                 <p className="text-xl font-bold truncate">{k.value}</p>
-                <p className="text-xs text-muted-foreground truncate">{k.sub}</p>
+                <p className={`text-xs truncate ${k.title === 'Ventas de hoy' && diffPct !== null ? (diffPct >= 0 ? 'text-emerald-600 font-medium' : 'text-red-600 font-medium') : 'text-muted-foreground'}`}>{k.sub}</p>
               </div>
             </CardContent>
           </Card>
@@ -123,6 +134,37 @@ export function DashboardView({ userName, onNavigate }: { userName: string; onNa
           </CardContent>
         </Card>
       </div>
+
+      {/* Horas pico */}
+      {(data.byHour || []).length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-base flex items-center gap-2"><Clock className="h-4 w-4 text-emerald-600" /> Ventas por hora (últimos 7 días)</CardTitle>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {diffPct !== null && (
+                  <Badge variant="outline" className={diffPct >= 0 ? 'text-emerald-700 border-emerald-300' : 'text-red-600 border-red-300'}>
+                    {diffPct >= 0 ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+                    {diffPct >= 0 ? '+' : ''}{diffPct}% vs ayer ({fmtMoney(ytd)})
+                  </Badge>
+                )}
+                <span>Hora pico: <b className="text-foreground">{bestHours[0]?.hour}</b> ({fmtMoney(bestHours[0]?.total || 0)})</span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.byHour}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v) => [fmtMoney(Number(v)), 'Ventas']} />
+                <Bar dataKey="total" fill="#0d9488" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Alertas y listas */}
       <div className="grid gap-4 lg:grid-cols-3">

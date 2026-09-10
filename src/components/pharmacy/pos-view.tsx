@@ -1,11 +1,12 @@
 'use client'
 
 // Punto de Venta (POS) del Sistema de Farmacias
+// Fase 3: pagos mixtos, promociones automáticas, puntos de lealtad e interacciones medicamentosas
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  api_products, api_customers, api_createSale, api_getSale, api_settings, fmtMoney,
+  api_products, api_customers, api_createSale, api_getSale, api_settings, api_promotions, api_interactions, fmtMoney,
 } from '@/lib/pharmacy-client'
-import type { Product, Customer, Sale, SessionUser } from '@/lib/pharmacy-types'
+import type { Product, Customer, Sale, SessionUser, Promotion, DrugInteraction } from '@/lib/pharmacy-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import {
-  Search, Plus, Minus, Trash2, ShoppingCart, ScanBarcode, FileText, Printer, RotateCcw, Pill, AlertCircle,
+  Search, Plus, Minus, Trash2, ShoppingCart, ScanBarcode, FileText, Printer, RotateCcw, Pill, AlertCircle, TriangleAlert, Percent, Star,
 } from 'lucide-react'
 
 interface CartItem {
@@ -28,19 +29,30 @@ interface CartItem {
   stock: number
   requiresPrescription: boolean
   controlled: boolean
+  categoryId?: string | null
   presentation?: string | null
 }
+
+const POINTS_PER = 10 // 1 punto por cada $10 de compra
+const POINT_VALUE = 0.10 // cada punto canjeado vale $0.10
 
 export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: () => void }) {
   const { toast } = useToast()
   const [products, setProducts] = useState<Product[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [promotions, setPromotions] = useState<Promotion[]>([])
+  const [interactions, setInteractions] = useState<DrugInteraction[]>([])
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [customerId, setCustomerId] = useState<string>('ocasional')
   const [paymentMethod, setPaymentMethod] = useState('EFECTIVO')
   const [discount, setDiscount] = useState('0')
   const [amountPaid, setAmountPaid] = useState('')
+  const [paidCash, setPaidCash] = useState('')
+  const [paidCard, setPaidCard] = useState('')
+  const [paidTransfer, setPaidTransfer] = useState('')
+  const [pointsToRedeem, setPointsToRedeem] = useState('')
+  const [prescriptionFolio, setPrescriptionFolio] = useState('')
   const [notes, setNotes] = useState('')
   const [processing, setProcessing] = useState(false)
   const [lastSale, setLastSale] = useState<Sale | null>(null)
@@ -51,6 +63,8 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
   useEffect(() => {
     api_products().then(setProducts).catch(() => {})
     api_customers().then(setCustomers).catch(() => {})
+    api_promotions().then(setPromotions).catch(() => {})
+    api_interactions().then(setInteractions).catch(() => {})
     api_settings().then((s) => setTaxRate(parseFloat(s.taxRate || '12'))).catch(() => {})
   }, [])
 
@@ -63,19 +77,102 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
     ).slice(0, 24)
   }, [products, search])
 
+  // Promociones vigentes hoy (activas y dentro de rango de fechas)
+  const activePromos = useMemo(() => {
+    const now = new Date()
+    return promotions.filter((p) => {
+      if (!p.active) return false
+      if (p.startDate && new Date(p.startDate) > now) return false
+      if (p.endDate && new Date(new Date(p.endDate).setHours(23, 59, 59)) < now) return false
+      return true
+    })
+  }, [promotions])
+
+  // Descuento automático por promociones (la mejor promoción por línea)
+  const promoDiscount = useMemo(() => {
+    let total = 0
+    const applied: string[] = []
+    for (const i of cart) {
+      let best = 0
+      for (const promo of activePromos) {
+        const matches = promo.product?.id === i.productId || (promo.categoryId && promo.categoryId === i.categoryId)
+        if (!matches) continue
+        const line = i.unitPrice * i.quantity
+        const d = promo.type === 'PORCENTAJE' ? line * (promo.value / 100) : promo.value * i.quantity
+        const capped = Math.min(d, line)
+        if (capped > best) {
+          best = capped
+          if (!applied.includes(promo.name)) applied.push(promo.name)
+        }
+      }
+      total += best
+    }
+    return { amount: Math.round(total * 100) / 100, names: applied }
+  }, [cart, activePromos])
+
+  // Interacciones medicamentosas dentro del carrito
+  const cartInteractions = useMemo(() => {
+    const ids = cart.map((i) => i.productId)
+    const found: { pair: [string, string]; severity: string; description: string }[] = []
+    for (const ix of interactions) {
+      if (ids.includes(ix.productAId) && ids.includes(ix.productBId)) {
+        found.push({
+          pair: [ix.productA?.name || 'Producto A', ix.productB?.name || 'Producto B'],
+          severity: ix.severity,
+          description: ix.description,
+        })
+      }
+    }
+    return found
+  }, [cart, interactions])
+
   const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0)
-  const discountNum = Math.min(parseFloat(discount) || 0, subtotal)
+  const selectedCustomer = customers.find((c) => c.id === customerId)
+  const manualDiscount = Math.min(parseFloat(discount) || 0, subtotal)
+  const redeemable = Math.min(parseInt(pointsToRedeem, 10) || 0, selectedCustomer?.points || 0, Math.floor(subtotal / POINT_VALUE))
+  const pointsDiscount = Math.round(redeemable * POINT_VALUE * 100) / 100
+  const discountNum = Math.min(manualDiscount + promoDiscount.amount + pointsDiscount, subtotal)
   const tax = Math.round((subtotal - discountNum) * (taxRate / 100) * 100) / 100
   const total = Math.round((subtotal - discountNum + tax) * 100) / 100
+
+  const cashNum = parseFloat(paidCash) || 0
+  const cardNum = parseFloat(paidCard) || 0
+  const transferNum = parseFloat(paidTransfer) || 0
   const paidNum = parseFloat(amountPaid) || 0
-  const change = paymentMethod === 'EFECTIVO' ? Math.max(0, paidNum - total) : 0
+  const mixTotal = Math.round((cashNum + cardNum + transferNum) * 100) / 100
+  const change = paymentMethod === 'EFECTIVO'
+    ? Math.max(0, paidNum - total)
+    : paymentMethod === 'MIXTO'
+      ? Math.max(0, mixTotal - total)
+      : 0
+  const mixMissing = paymentMethod === 'MIXTO' ? Math.max(0, Math.round((total - mixTotal) * 100) / 100) : 0
   const needsRx = cart.some((i) => i.requiresPrescription)
+
+  function checkInteractionsFor(p: Product): DrugInteraction[] {
+    const ids = cart.filter((c) => c.productId !== p.id).map((c) => c.productId)
+    return interactions.filter((ix) => ix.active && (
+      (ix.productAId === p.id && ids.includes(ix.productBId)) ||
+      (ix.productBId === p.id && ids.includes(ix.productAId))
+    ))
+  }
 
   function addToCart(p: Product) {
     const stock = p.stock ?? 0
     if (stock <= 0) {
       toast({ title: 'Sin stock', description: `"${p.name}" no tiene existencias en ningún lote`, variant: 'destructive' })
       return
+    }
+    // Advertencia clínica de interacciones al agregar
+    const conflicts = checkInteractionsFor(p)
+    if (conflicts.length > 0) {
+      const worst = conflicts.find((c) => c.severity === 'GRAVE') || conflicts[0]
+      const other = worst.productAId === p.id ? worst.productB?.name : worst.productA?.name
+      toast({
+        title: `⚠ Interacción ${worst.severity} detectada`,
+        description: `"${p.name}" interactúa con "${other}": ${worst.description}`,
+        variant: 'destructive',
+        duration: 8000,
+      })
     }
     setCart((c) => {
       const existing = c.find((i) => i.productId === p.id)
@@ -89,7 +186,7 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
       return [...c, {
         productId: p.id, name: p.name, code: p.code, unitPrice: p.salePrice,
         quantity: 1, stock, requiresPrescription: p.requiresPrescription, controlled: p.controlled,
-        presentation: p.presentation,
+        categoryId: p.categoryId, presentation: p.presentation,
       }]
     })
   }
@@ -106,16 +203,32 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
     setCart([])
     setDiscount('0')
     setAmountPaid('')
+    setPaidCash('')
+    setPaidCard('')
+    setPaidTransfer('')
+    setPointsToRedeem('')
+    setPrescriptionFolio('')
     setNotes('')
     setCustomerId('ocasional')
     setPaymentMethod('EFECTIVO')
     searchRef.current?.focus()
   }
 
+  function validate(): string | null {
+    if (paymentMethod === 'EFECTIVO' && paidNum > 0 && paidNum < total) {
+      return `El monto pagado es menor al total (${fmtMoney(total)})`
+    }
+    if (paymentMethod === 'MIXTO' && mixTotal < total) {
+      return `Los pagos suman ${fmtMoney(mixTotal)} y el total es ${fmtMoney(total)} (faltan ${fmtMoney(mixMissing)})`
+    }
+    return null
+  }
+
   async function completeSale() {
     if (cart.length === 0) return
-    if (paymentMethod === 'EFECTIVO' && paidNum > 0 && paidNum < total) {
-      toast({ title: 'Monto insuficiente', description: `El total es ${fmtMoney(total)}`, variant: 'destructive' })
+    const err = validate()
+    if (err) {
+      toast({ title: 'Revisa el pago', description: err, variant: 'destructive' })
       return
     }
     setProcessing(true)
@@ -123,11 +236,17 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
       const cust = customers.find((c) => c.id === customerId)
       const created = await api_createSale({
         userId: user.id,
+        userName: user.name,
         customerId: cust && cust.id ? customerId : null,
         customerName: cust ? cust.name : 'Cliente Ocasional',
         paymentMethod,
         discount: discountNum,
         amountPaid: paidNum,
+        paidCash: paymentMethod === 'MIXTO' ? cashNum : undefined,
+        paidCard: paymentMethod === 'MIXTO' ? cardNum : undefined,
+        paidTransfer: paymentMethod === 'MIXTO' ? transferNum : undefined,
+        pointsRedeemed: redeemable,
+        prescriptionFolio: prescriptionFolio || undefined,
         notes,
         items: cart.map((i) => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice })),
       })
@@ -136,14 +255,18 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
       setReceiptOpen(true)
       resetSale()
       api_products().then(setProducts).catch(() => {})
+      api_customers().then(setCustomers).catch(() => {})
       onSaleDone?.()
-      toast({ title: 'Venta registrada', description: `Factura ${full.invoiceNumber} · ${fmtMoney(full.total)}` })
+      const pts = full.pointsEarned ? ` · +${full.pointsEarned} pts` : ''
+      toast({ title: 'Venta registrada', description: `Factura ${full.invoiceNumber} · ${fmtMoney(full.total)}${pts}` })
     } catch (e) {
       toast({ title: 'Error al registrar la venta', description: e instanceof Error ? e.message : 'Intente nuevamente', variant: 'destructive' })
     } finally {
       setProcessing(false)
     }
   }
+
+  const severityCls = (s: string) => s === 'GRAVE' ? 'border-red-300 bg-red-50 text-red-800' : s === 'MODERADA' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-300 bg-slate-50 text-slate-700'
 
   return (
     <div className="space-y-4">
@@ -173,6 +296,7 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
             {filtered.map((p) => {
               const stock = p.stock ?? 0
               const inCart = cart.find((i) => i.productId === p.id)?.quantity || 0
+              const hasPromo = activePromos.some((pr) => pr.product?.id === p.id || (pr.categoryId && pr.categoryId === p.categoryId))
               return (
                 <button
                   key={p.id}
@@ -189,7 +313,10 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
                     {stock === 0 && <Badge variant="destructive" className="shrink-0 text-[10px]">AGOTADO</Badge>}
                   </div>
                   <div className="mt-2 flex items-center justify-between">
-                    <span className="font-bold text-emerald-700">{fmtMoney(p.salePrice)}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`font-bold ${hasPromo ? 'text-amber-600' : 'text-emerald-700'}`}>{fmtMoney(p.salePrice)}</span>
+                      {hasPromo && <Percent className="h-3 w-3 text-amber-500" />}
+                    </div>
                     <span className={`text-xs ${stock <= (p.minStock || 5) ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
                       Stock: {stock}
                     </span>
@@ -243,17 +370,36 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
                 ))}
               </div>
 
+              {cartInteractions.length > 0 && (
+                <div className="space-y-1.5">
+                  {cartInteractions.map((ix, idx) => (
+                    <div key={idx} className={`flex items-start gap-2 rounded-lg border p-2.5 text-xs ${severityCls(ix.severity)}`}>
+                      <TriangleAlert className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span><b>Interacción {ix.severity.toLowerCase()}:</b> {ix.pair[0]} + {ix.pair[1]}. {ix.description}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {needsRx && (
                 <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 p-2.5 text-xs text-red-700">
                   <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>Esta venta incluye medicamentos que <b>requieren receta médica</b>. Solicite y registre la receta.</span>
+                  <span>Esta venta incluye medicamentos que <b>requieren receta médica</b>. Solicite la receta e ingrese su folio:</span>
                 </div>
+              )}
+              {needsRx && (
+                <Input
+                  placeholder="Folio de receta (opcional) — ej. RC-0001"
+                  value={prescriptionFolio}
+                  onChange={(e) => setPrescriptionFolio(e.target.value)}
+                  className="h-9 text-sm"
+                />
               )}
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Cliente</Label>
-                  <Select value={customerId} onValueChange={setCustomerId}>
+                  <Select value={customerId} onValueChange={(v) => { setCustomerId(v); setPointsToRedeem('') }}>
                     <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ocasional">Cliente Ocasional</SelectItem>
@@ -263,18 +409,19 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Pago</Label>
-                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                  <Select value={paymentMethod} onValueChange={(v) => { setPaymentMethod(v); setAmountPaid('') }}>
                     <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="EFECTIVO">Efectivo</SelectItem>
                       <SelectItem value="TARJETA">Tarjeta</SelectItem>
                       <SelectItem value="TRANSFERENCIA">Transferencia</SelectItem>
                       <SelectItem value="QR">QR</SelectItem>
+                      <SelectItem value="MIXTO">Mixto (varios)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Descuento ($)</Label>
+                  <Label className="text-xs">Descuento manual ($)</Label>
                   <Input className="h-9" value={discount} onChange={(e) => setDiscount(e.target.value)} inputMode="decimal" placeholder="0.00" />
                 </div>
                 {paymentMethod === 'EFECTIVO' && (
@@ -285,12 +432,63 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
                 )}
               </div>
 
+              {paymentMethod === 'MIXTO' && (
+                <div className="grid grid-cols-3 gap-2 rounded-lg border bg-slate-50 p-2">
+                  <div className="space-y-1">
+                    <Label className="text-[10px]">Efectivo</Label>
+                    <Input className="h-8" value={paidCash} onChange={(e) => setPaidCash(e.target.value)} inputMode="decimal" placeholder="0.00" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px]">Tarjeta</Label>
+                    <Input className="h-8" value={paidCard} onChange={(e) => setPaidCard(e.target.value)} inputMode="decimal" placeholder="0.00" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px]">Transf.</Label>
+                    <Input className="h-8" value={paidTransfer} onChange={(e) => setPaidTransfer(e.target.value)} inputMode="decimal" placeholder="0.00" />
+                  </div>
+                  <p className={`col-span-3 text-xs ${mixMissing > 0 ? 'text-red-600 font-medium' : 'text-emerald-700'}`}>
+                    Suma: {fmtMoney(mixTotal)} {mixMissing > 0 ? `— faltan ${fmtMoney(mixMissing)}` : mixTotal > total ? `— cambio ${fmtMoney(change)}` : '— ok ✓'}
+                  </p>
+                </div>
+              )}
+
+              {/* Puntos de lealtad */}
+              {selectedCustomer && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                  <Star className="h-4 w-4 text-amber-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-amber-800">{selectedCustomer.name}: {selectedCustomer.points ?? 0} puntos ≈ {fmtMoney((selectedCustomer.points ?? 0) * POINT_VALUE)}</p>
+                    <p className="text-[10px] text-amber-700">Esta venta generará {Math.floor(total / POINTS_PER)} puntos · 1 punto por cada {fmtMoney(POINTS_PER)}</p>
+                  </div>
+                  {(selectedCustomer.points ?? 0) > 0 && (
+                    <Input
+                      className="h-8 w-20 shrink-0"
+                      value={pointsToRedeem}
+                      onChange={(e) => setPointsToRedeem(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="Canjear"
+                    />
+                  )}
+                </div>
+              )}
+
               <div className="rounded-lg bg-slate-50 border p-3 space-y-1 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{fmtMoney(subtotal)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Descuento</span><span className="text-red-600">-{fmtMoney(discountNum)}</span></div>
+                {promoDiscount.amount > 0 && (
+                  <div className="flex justify-between text-amber-700"><span>Promos: {promoDiscount.names.join(', ')}</span><span>-{fmtMoney(promoDiscount.amount)}</span></div>
+                )}
+                {pointsDiscount > 0 && (
+                  <div className="flex justify-between text-amber-700"><span>Canje de {redeemable} pts</span><span>-{fmtMoney(pointsDiscount)}</span></div>
+                )}
+                {manualDiscount > 0 && (
+                  <div className="flex justify-between text-red-600"><span>Descuento manual</span><span>-{fmtMoney(manualDiscount)}</span></div>
+                )}
+                {promoDiscount.amount === 0 && pointsDiscount === 0 && manualDiscount === 0 && (
+                  <div className="flex justify-between"><span className="text-muted-foreground">Descuento</span><span>-{fmtMoney(0)}</span></div>
+                )}
                 <div className="flex justify-between"><span className="text-muted-foreground">IVA ({taxRate}%)</span><span>{fmtMoney(tax)}</span></div>
                 <div className="flex justify-between border-t pt-1.5 mt-1.5 font-bold text-base"><span>TOTAL</span><span className="text-emerald-700">{fmtMoney(total)}</span></div>
-                {paymentMethod === 'EFECTIVO' && paidNum > 0 && (
+                {((paymentMethod === 'EFECTIVO' && paidNum > 0) || paymentMethod === 'MIXTO') && change > 0 && (
                   <div className="flex justify-between"><span className="text-muted-foreground">Cambio</span><span className="font-semibold">{fmtMoney(change)}</span></div>
                 )}
               </div>
@@ -330,7 +528,18 @@ export function PosView({ user, onSaleDone }: { user: SessionUser; onSaleDone?: 
                 <div className="flex justify-between"><span>IVA</span><span>{fmtMoney(lastSale.tax)}</span></div>
                 <div className="flex justify-between font-bold text-sm"><span>TOTAL</span><span>{fmtMoney(lastSale.total)}</span></div>
                 <div className="flex justify-between"><span>{lastSale.paymentMethod}</span><span>Pagado: {fmtMoney(lastSale.amountPaid)}</span></div>
+                {lastSale.paymentMethod === 'MIXTO' && (
+                  <div className="text-[10px] text-muted-foreground">
+                    Efectivo: {fmtMoney(lastSale.paidCash || 0)} · Tarjeta: {fmtMoney(lastSale.paidCard || 0)} · Transf.: {fmtMoney(lastSale.paidTransfer || 0)}
+                  </div>
+                )}
                 {lastSale.change > 0 && <div className="flex justify-between"><span>Cambio</span><span>{fmtMoney(lastSale.change)}</span></div>}
+                {(lastSale.pointsEarned || 0) > 0 && (
+                  <div className="flex justify-between text-amber-600"><span>Puntos ganados</span><span>+{lastSale.pointsEarned} pts</span></div>
+                )}
+                {(lastSale.pointsRedeemed || 0) > 0 && (
+                  <div className="flex justify-between text-amber-600"><span>Puntos canjeados</span><span>-{lastSale.pointsRedeemed} pts</span></div>
+                )}
                 <p className="text-center text-muted-foreground mt-2">¡Gracias por su compra!</p>
               </div>
               <DialogFooter>

@@ -66,7 +66,12 @@ export interface Sale {
   total: number
   paymentMethod: string
   amountPaid: number
+  paidCash?: number
+  paidCard?: number
+  paidTransfer?: number
   change: number
+  pointsEarned?: number
+  pointsRedeemed?: number
   status: string
   voidReason?: string | null
   notes?: string | null
@@ -107,8 +112,10 @@ export interface Customer {
   phone?: string | null
   email?: string | null
   address?: string | null
+  points?: number
   notes?: string | null
   createdAt: string
+  _count?: { sales: number }
 }
 
 export interface Supplier {
@@ -122,6 +129,15 @@ export interface Supplier {
   active: boolean
 }
 
+export interface PrescriptionItem {
+  id?: string
+  prescriptionId?: string
+  productId?: string | null
+  productName: string
+  quantity: number
+  dispensed: boolean
+}
+
 export interface Prescription {
   id: string
   folio: string
@@ -130,8 +146,11 @@ export interface Prescription {
   patientName: string
   saleId?: string | null
   sale?: { id: string; invoiceNumber: string } | null
+  prescriptionDate?: string | null
+  status: 'REGISTRADA' | 'PARCIAL' | 'DISPENSADA'
   notes?: string | null
   createdAt: string
+  items?: PrescriptionItem[]
 }
 
 export interface SystemUser {
@@ -143,6 +162,7 @@ export interface SystemUser {
   email?: string | null
   phone?: string | null
   active: boolean
+  lastLoginAt?: string | null
   createdAt?: string
 }
 
@@ -285,17 +305,95 @@ export interface AlertsData {
   openCash: { id: string; openedAt: string; user?: string } | null
 }
 
-// Módulos disponibles y roles con acceso (20 módulos)
+// ===== NUEVOS MÓDULOS (fase 3) =====
+export interface DrugInteraction {
+  id: string
+  productAId: string
+  productA?: { id: string; name: string; code: string } | null
+  productBId: string
+  productB?: { id: string; name: string; code: string } | null
+  severity: 'LEVE' | 'MODERADA' | 'GRAVE'
+  description: string
+  active: boolean
+  createdAt: string
+}
+
+export interface InventoryCountItem {
+  id: string
+  countId?: string
+  lotId: string
+  productId: string
+  productName: string
+  lotNumber: string
+  systemQty: number
+  countedQty?: number | null
+  difference?: number | null
+}
+
+export interface InventoryCount {
+  id: string
+  countNumber: string
+  userId: string
+  user?: { id: string; name: string } | null
+  status: 'EN_PROCESO' | 'APLICADO' | 'CANCELADO'
+  notes?: string | null
+  totalLots: number
+  differences: number
+  createdAt: string
+  appliedAt?: string | null
+  items?: InventoryCountItem[]
+  _count?: { items: number }
+}
+
+export interface PurchaseSuggestion {
+  productId: string
+  code: string
+  name: string
+  category?: string
+  supplierId?: string | null
+  supplierName: string
+  stock: number
+  minStock: number
+  sold30: number
+  avgDaily: number
+  daysCover?: number | null
+  suggested: number
+  urgency: 'AGOTADO' | 'CRITICA' | 'ALTA' | 'MEDIA' | 'BAJA'
+  unitCost: number
+  estimatedCost: number
+}
+
+export interface SuggestionsData {
+  suggestions: PurchaseSuggestion[]
+  totalEstimated: number
+  generatedAt: string
+}
+
+export interface AuditLogEntry {
+  id: string
+  userId?: string | null
+  userName: string
+  action: string
+  module: string
+  detail?: string | null
+  createdAt: string
+}
+
+// Módulos disponibles y roles con acceso (24 módulos)
 export const MODULES_BY_ROLE: Record<string, string[]> = {
   ADMIN: [
     'dashboard', 'pos', 'cash', 'sales', 'quotations', 'returns', 'prescriptions',
-    'products', 'categories', 'promotions', 'inventory', 'movements', 'alerts',
-    'purchases', 'suppliers', 'customers', 'controlled', 'reports', 'users', 'settings',
+    'interactions', 'controlled',
+    'products', 'categories', 'promotions', 'inventory', 'counts', 'movements', 'alerts',
+    'purchases', 'suggestions', 'suppliers', 'customers',
+    'reports', 'audit', 'users', 'settings',
   ],
   FARMACEUTICO: [
     'dashboard', 'pos', 'cash', 'sales', 'quotations', 'returns', 'prescriptions',
-    'products', 'categories', 'promotions', 'inventory', 'movements', 'alerts',
-    'purchases', 'suppliers', 'customers', 'controlled', 'reports',
+    'interactions', 'controlled',
+    'products', 'categories', 'promotions', 'inventory', 'counts', 'movements', 'alerts',
+    'purchases', 'suggestions', 'suppliers', 'customers',
+    'reports',
   ],
   VENDEDOR: ['dashboard', 'pos', 'cash', 'sales', 'quotations', 'returns', 'customers', 'products', 'alerts'],
 }
