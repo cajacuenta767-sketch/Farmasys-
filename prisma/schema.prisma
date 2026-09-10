@@ -22,14 +22,21 @@ model User {
   updatedAt DateTime @updatedAt
   sales     Sale[]
   purchases Purchase[]
+  cashSessions       CashSession[]
+  cashMovements      CashMovement[]
+  inventoryMovements InventoryMovement[]
+  controlledLogs     ControlledLog[]
+  returns            Return[]
+  quotations         Quotation[]
 }
 
 // CATEGORÍAS DE MEDICAMENTOS
 model Category {
-  id          String    @id @default(cuid())
-  name        String    @unique
+  id          String      @id @default(cuid())
+  name        String      @unique
   description String?
   products    Product[]
+  promotions  Promotion[]
 }
 
 // PROVEEDORES / DISTRIBUIDORAS
@@ -74,6 +81,10 @@ model Product {
   lots                 Lot[]
   saleItems            SaleItem[]
   purchaseItems        PurchaseItem[]
+  inventoryMovements   InventoryMovement[]
+  controlledLogs       ControlledLog[]
+  quotationItems       QuotationItem[]
+  promotions           Promotion[]
 }
 
 // LOTES DE INVENTARIO (trazabilidad y vencimientos, despacho FEFO)
@@ -126,6 +137,7 @@ model Sale {
   createdAt     DateTime   @default(now())
   items         SaleItem[]
   prescriptions Prescription[]
+  returns       Return[]
 }
 
 // DETALLE DE VENTA
@@ -191,4 +203,124 @@ model Setting {
   id    String @id @default(cuid())
   key   String @unique
   value String
+}
+
+// CAJA - SESIONES DE CAJA (turnos con arqueo)
+model CashSession {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id])
+  openingAmount  Float          @default(0)
+  closingAmount  Float? // efectivo contado al cerrar
+  expectedAmount Float? // esperado: apertura + ventas en efectivo + ingresos - retiros
+  difference     Float?
+  status         String         @default("ABIERTA") // ABIERTA | CERRADA
+  openedAt       DateTime       @default(now())
+  closedAt       DateTime?
+  notes          String?
+  movements      CashMovement[]
+}
+
+// MOVIMIENTOS DE CAJA (ingresos/retiros de efectivo, ventas)
+model CashMovement {
+  id            String      @id @default(cuid())
+  cashSessionId String
+  cashSession   CashSession @relation(fields: [cashSessionId], references: [id])
+  type          String // INGRESO | RETIRO | VENTA
+  amount        Float
+  reason        String
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  createdAt     DateTime    @default(now())
+}
+
+// KARDEX - MOVIMIENTOS DE INVENTARIO (trazabilidad completa)
+model InventoryMovement {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  lotNumber String?
+  type      String // ENTRADA | SALIDA | AJUSTE | MERMA
+  quantity  Int // siempre positivo; el tipo indica la dirección
+  reason    String
+  reference String? // FV-00001, OC-0002, DEV-00001...
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+// LIBRO OFICIAL DE MEDICAMENTOS CONTROLADOS
+model ControlledLog {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  lotNumber   String
+  operation   String // ENTRADA | SALIDA
+  quantity    Int
+  doctorName  String? // para salidas con receta
+  patientName String?
+  folio       String? // folio de receta
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+// COTIZACIONES PARA CLIENTES
+model Quotation {
+  id           String          @id @default(cuid())
+  quoteNumber  String          @unique
+  customerId   String?
+  customerName String?
+  userId       String
+  user         User            @relation(fields: [userId], references: [id])
+  total        Float           @default(0)
+  status       String          @default("PENDIENTE") // PENDIENTE | ACEPTADA | RECHAZADA | VENCIDA
+  validUntil   DateTime?
+  notes        String?
+  createdAt    DateTime        @default(now())
+  items        QuotationItem[]
+}
+
+// DETALLE DE COTIZACIÓN
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id])
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  productName String
+  quantity    Int
+  unitPrice   Float
+  subtotal    Float
+}
+
+// PROMOCIONES Y DESCUENTOS
+model Promotion {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  type        String    @default("PORCENTAJE") // PORCENTAJE | MONTO
+  value       Float // 10 = 10% o $10 según tipo
+  productId   String?
+  product     Product?  @relation(fields: [productId], references: [id])
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  startDate   DateTime?
+  endDate     DateTime?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+}
+
+// DEVOLUCIONES DE CLIENTES
+model Return {
+  id           String   @id @default(cuid())
+  returnNumber String   @unique
+  saleId       String
+  sale         Sale     @relation(fields: [saleId], references: [id])
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  amount       Float    @default(0)
+  reason       String
+  restocked    Boolean  @default(true)
+  createdAt    DateTime @default(now())
 }

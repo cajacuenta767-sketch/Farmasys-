@@ -11,6 +11,14 @@ function daysFromNow(d: number) {
 
 async function main() {
   console.log('Limpiando base de datos...')
+  await prisma.cashMovement.deleteMany()
+  await prisma.cashSession.deleteMany()
+  await prisma.inventoryMovement.deleteMany()
+  await prisma.controlledLog.deleteMany()
+  await prisma.quotationItem.deleteMany()
+  await prisma.quotation.deleteMany()
+  await prisma.promotion.deleteMany()
+  await prisma.return.deleteMany()
   await prisma.prescription.deleteMany()
   await prisma.saleItem.deleteMany()
   await prisma.sale.deleteMany()
@@ -285,7 +293,7 @@ async function main() {
         items: { create: itemsData.map(i => ({ ...i })) },
       },
     })
-    // Descontar de lotes FEFO
+    // Descontar de lotes FEFO + registrar kardex y controlados
     for (const [code, qty] of sp.items) {
       const p = products[code]
       let remaining = qty
@@ -294,6 +302,13 @@ async function main() {
         if (remaining <= 0) break
         const take = Math.min(remaining, lot.quantity)
         await prisma.lot.update({ where: { id: lot.id }, data: { quantity: { decrement: take } } })
+        await prisma.inventoryMovement.create({
+          data: {
+            productId: p.id, lotNumber: lot.lotNumber, type: 'SALIDA', quantity: take,
+            reason: 'Venta en mostrador', reference: sale.invoiceNumber, userId: users[sp.user].id,
+            createdAt: date,
+          },
+        })
         remaining -= take
       }
     }
@@ -312,12 +327,160 @@ async function main() {
     })
   }
 
+  // ===== KARDEX: ENTRADAS DE LA COMPRA RECIBIDA =====
+  console.log('Creando entradas de kardex...')
+  for (const item of await prisma.purchaseItem.findMany({ where: { purchaseId: purchase1.id }, include: { product: true } })) {
+    await prisma.inventoryMovement.create({
+      data: {
+        productId: item.productId, lotNumber: item.lotNumber, type: 'ENTRADA', quantity: item.quantity,
+        reason: 'Compra recibida a proveedor', reference: 'OC-0001', userId: users.admin.id,
+        createdAt: daysFromNow(-28),
+      },
+    })
+  }
+  // Merma de ejemplo
+  await prisma.inventoryMovement.create({
+    data: {
+      productId: products['MED-012'].id, lotNumber: 'L-2025-0501', type: 'MERMA', quantity: 3,
+      reason: 'Frascos rotos en estantería', reference: null, userId: users.farmacia.id,
+      createdAt: daysFromNow(-5),
+    },
+  })
+  await prisma.inventoryMovement.create({
+    data: {
+      productId: products['MED-016'].id, lotNumber: 'L-2025-0541', type: 'AJUSTE', quantity: 2,
+      reason: 'Conteo físico: sobrante', reference: null, userId: users.admin.id,
+      createdAt: daysFromNow(-3),
+    },
+  })
+
+  // ===== LIBRO DE CONTROLADOS =====
+  console.log('Creando libro de controlados...')
+  await prisma.controlledLog.createMany({
+    data: [
+      { productId: products['MED-021'].id, lotNumber: 'L-2025-0590', operation: 'ENTRADA', quantity: 15, userId: users.admin.id, createdAt: daysFromNow(-20) },
+      { productId: products['MED-022'].id, lotNumber: 'L-2025-0601', operation: 'ENTRADA', quantity: 12, userId: users.admin.id, createdAt: daysFromNow(-20) },
+      { productId: products['MED-021'].id, lotNumber: 'L-2025-0590', operation: 'SALIDA', quantity: 1, doctorName: 'Dr. Hernando Vélez', patientName: 'Jorge Iván Ramírez', folio: 'RC-0009', userId: users.farmacia.id, createdAt: daysFromNow(-6) },
+      { productId: products['MED-022'].id, lotNumber: 'L-2025-0601', operation: 'SALIDA', quantity: 2, doctorName: 'Dra. Sandra Mendoza', patientName: 'Carmen Rosa Díaz', folio: 'RC-0012', userId: users.farmacia.id, createdAt: daysFromNow(-4) },
+    ],
+  })
+
+  // ===== CAJA =====
+  console.log('Creando sesiones de caja...')
+  // Turno cerrado de ayer (cuadrado)
+  const cs1 = await prisma.cashSession.create({
+    data: {
+      userId: users.vendedor.id, openingAmount: 50, status: 'CERRADA',
+      openedAt: daysFromNow(-1), closedAt: new Date(daysFromNow(-1).getTime() + 9 * 3600 * 1000),
+      expectedAmount: 132.4, closingAmount: 132.4, difference: 0,
+      notes: 'Turno mañana - sin novedades',
+    },
+  })
+  // Turno cerrado de anteayer (con faltante)
+  const cs2 = await prisma.cashSession.create({
+    data: {
+      userId: users.farmacia.id, openingAmount: 50, status: 'CERRADA',
+      openedAt: daysFromNow(-2), closedAt: new Date(daysFromNow(-2).getTime() + 9 * 3600 * 1000),
+      expectedAmount: 118.75, closingAmount: 116.75, difference: -2,
+      notes: 'Faltante de $2 — revisar con vendedor de turno',
+    },
+  })
+  await prisma.cashMovement.createMany({
+    data: [
+      { cashSessionId: cs1.id, type: 'VENTA', amount: 68.4, reason: 'Venta FV-00016', userId: users.vendedor.id, createdAt: daysFromNow(-1) },
+      { cashSessionId: cs1.id, type: 'VENTA', amount: 14.0, reason: 'Venta FV-00017', userId: users.vendedor.id, createdAt: daysFromNow(-1) },
+      { cashSessionId: cs2.id, type: 'VENTA', amount: 52.75, reason: 'Venta FV-00014', userId: users.farmacia.id, createdAt: daysFromNow(-2) },
+      { cashSessionId: cs2.id, type: 'RETIRO', amount: 4.0, reason: 'Compra de insumos de papelería', userId: users.farmacia.id, createdAt: daysFromNow(-2) },
+      { cashSessionId: cs2.id, type: 'INGRESO', amount: 20.0, reason: 'Adelanto de fondo', userId: users.farmacia.id, createdAt: daysFromNow(-2) },
+    ],
+  })
+  // Caja abierta HOY para operar de inmediato
+  await prisma.cashSession.create({
+    data: {
+      userId: users.vendedor.id, openingAmount: 50, status: 'ABIERTA',
+      openedAt: new Date(Date.now() - 2 * 3600 * 1000),
+    },
+  })
+
+  // ===== COTIZACIONES =====
+  console.log('Creando cotizaciones...')
+  await prisma.quotation.create({
+    data: {
+      quoteNumber: 'CT-00001', customerId: customers[1].id, customerName: customers[1].name,
+      userId: users.vendedor.id, total: 79.9, status: 'PENDIENTE',
+      validUntil: daysFromNow(12), notes: 'Nebulizador para uso domiciliario',
+      createdAt: daysFromNow(-3),
+      items: { create: [
+        { productId: products['MED-030'].id, productName: products['MED-030'].name, quantity: 1, unitPrice: 79.9, subtotal: 79.9 },
+      ] },
+    },
+  })
+  await prisma.quotation.create({
+    data: {
+      quoteNumber: 'CT-00002', customerId: customers[3].id, customerName: customers[3].name,
+      userId: users.farmacia.id, total: 55.35, status: 'PENDIENTE',
+      validUntil: daysFromNow(8), notes: 'Tratamiento completo 30 días',
+      createdAt: daysFromNow(-1),
+      items: { create: [
+        { productId: products['MED-010'].id, productName: products['MED-010'].name, quantity: 2, unitPrice: 7.5, subtotal: 15.0 },
+        { productId: products['MED-014'].id, productName: products['MED-014'].name, quantity: 1, unitPrice: 22.0, subtotal: 22.0 },
+        { productId: products['MED-009'].id, productName: products['MED-009'].name, quantity: 2, unitPrice: 8.5, subtotal: 17.0 },
+        { productId: products['MED-025'].id, productName: products['MED-025'].name, quantity: 1, unitPrice: 5.0, subtotal: 5.0 },
+      ] },
+    },
+  })
+
+  // ===== PROMOCIONES =====
+  console.log('Creando promociones...')
+  await prisma.promotion.createMany({
+    data: [
+      { name: 'Semana de la Vitamina C', description: '20% de descuento en todos los suplementos de vitamina C', type: 'PORCENTAJE', value: 20, productId: products['MED-013'].id, startDate: daysFromNow(-5), endDate: daysFromNow(10), active: true },
+      { name: 'Descuento Dermatológico', description: '15% en cremas hidratantes seleccionadas', type: 'PORCENTAJE', value: 15, categoryId: categories['Dermatológicos'], startDate: daysFromNow(-2), endDate: daysFromNow(15), active: true },
+      { name: 'Ahorro directo en Gel Antibacterial', description: '1 dólar menos en gel antibacterial 500ml', type: 'MONTO', value: 1.0, productId: products['MED-018'].id, active: true },
+      { name: 'Promoción de invierno (finalizada)', description: 'Descuento en antigripales — temporada pasada', type: 'PORCENTAJE', value: 10, categoryId: categories['Antigripales'], startDate: daysFromNow(-60), endDate: daysFromNow(-20), active: false },
+    ],
+  })
+
+  // ===== DEVOLUCIÓN DE EJEMPLO =====
+  console.log('Creando devolución...')
+  const saleForReturn = await prisma.sale.findFirst({
+    where: { invoiceNumber: 'FV-00010' },
+    include: { items: true },
+  })
+  if (saleForReturn) {
+    for (const it of saleForReturn.items) {
+      if (it.lotId) {
+        await prisma.lot.update({ where: { id: it.lotId }, data: { quantity: { increment: it.quantity } } }).catch(() => {})
+      }
+      await prisma.inventoryMovement.create({
+        data: {
+          productId: it.productId, lotNumber: it.lotNumber, type: 'ENTRADA', quantity: it.quantity,
+          reason: 'Devolución de cliente — producto sin abrir', reference: saleForReturn.invoiceNumber,
+          userId: users.admin.id, createdAt: daysFromNow(-1),
+        },
+      })
+    }
+    await prisma.return.create({
+      data: {
+        returnNumber: 'DEV-00001', saleId: saleForReturn.id, userId: users.admin.id,
+        amount: saleForReturn.total, reason: 'Cliente devolvió el producto sin abrir (compra equivocada)',
+        restocked: true, createdAt: daysFromNow(-1),
+      },
+    })
+  }
+
   console.log('✅ Seed completado:')
   console.log(`  - ${await prisma.product.count()} productos`)
   console.log(`  - ${await prisma.lot.count()} lotes`)
   console.log(`  - ${await prisma.sale.count()} ventas`)
   console.log(`  - ${await prisma.customer.count()} clientes`)
   console.log(`  - ${await prisma.supplier.count()} proveedores`)
+  console.log(`  - ${await prisma.inventoryMovement.count()} movimientos de kardex`)
+  console.log(`  - ${await prisma.controlledLog.count()} registros de controlados`)
+  console.log(`  - ${await prisma.cashSession.count()} sesiones de caja`)
+  console.log(`  - ${await prisma.quotation.count()} cotizaciones`)
+  console.log(`  - ${await prisma.promotion.count()} promociones`)
+  console.log(`  - ${await prisma.return.count()} devoluciones`)
 }
 
 main()

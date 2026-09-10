@@ -2,6 +2,8 @@
 import type {
   SessionUser, Product, Lot, Sale, Purchase, Customer, Supplier,
   Prescription, SystemUser, Category,
+  CashSession, CashMovement, InventoryMovement, ControlledLog,
+  Quotation, Promotion, ReturnRecord, AlertsData,
 } from './pharmacy-types'
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
@@ -92,6 +94,54 @@ export const api_report = (type: string, from?: string, to?: string) => {
   if (to) p.set('to', to)
   return api<ReportData>(`/api/reports?${p.toString()}`)
 }
+
+// ===== CAJA =====
+export const api_cashSessions = () => api<CashSession[]>('/api/cash-sessions')
+export const api_openCash = (userId: string, openingAmount: number) =>
+  api<CashSession>('/api/cash-sessions', { method: 'POST', body: JSON.stringify({ userId, openingAmount }) })
+export const api_getCashSession = (id: string) => api<CashSession>(`/api/cash-sessions/${id}`)
+export const api_closeCash = (id: string, closingAmount: number, notes?: string) =>
+  api<CashSession>(`/api/cash-sessions/${id}`, { method: 'POST', body: JSON.stringify({ closingAmount, notes }) })
+export const api_cashMovements = (sessionId?: string) =>
+  api<CashMovement[]>(`/api/cash-movements${sessionId ? `?sessionId=${sessionId}` : ''}`)
+export const api_addCashMovement = (m: { type: 'INGRESO' | 'RETIRO'; amount: number; reason: string; userId: string }) =>
+  api<CashMovement>('/api/cash-movements', { method: 'POST', body: JSON.stringify(m) })
+
+// ===== ALERTAS =====
+export const api_alerts = () => api<AlertsData>('/api/alerts')
+
+// ===== KARDEX =====
+export const api_inventoryMovements = (params = '') =>
+  api<InventoryMovement[]>(`/api/inventory-movements${params ? `?${params}` : ''}`)
+export const api_addInventoryMovement = (m: { productId: string; type: string; quantity: number; reason: string; userId: string; lotNumber?: string; reference?: string }) =>
+  api<InventoryMovement>('/api/inventory-movements', { method: 'POST', body: JSON.stringify(m) })
+
+// ===== CONTROLADOS =====
+export const api_controlledLogs = (params = '') =>
+  api<ControlledLog[]>(`/api/controlled-logs${params ? `?${params}` : ''}`)
+export const api_addControlledLog = (l: Record<string, unknown>) =>
+  api<ControlledLog>('/api/controlled-logs', { method: 'POST', body: JSON.stringify(l) })
+
+// ===== COTIZACIONES =====
+export const api_quotations = (params = '') => api<Quotation[]>(`/api/quotations${params ? `?${params}` : ''}`)
+export const api_createQuotation = (q: Record<string, unknown>) =>
+  api<Quotation>('/api/quotations', { method: 'POST', body: JSON.stringify(q) })
+export const api_updateQuotation = (id: string, status: string) =>
+  api<Quotation>(`/api/quotations/${id}`, { method: 'PUT', body: JSON.stringify({ status }) })
+export const api_deleteQuotation = (id: string) => api<{ success: boolean }>(`/api/quotations/${id}`, { method: 'DELETE' })
+
+// ===== PROMOCIONES =====
+export const api_promotions = () => api<Promotion[]>('/api/promotions')
+export const api_createPromotion = (p: Record<string, unknown>) =>
+  api<Promotion>('/api/promotions', { method: 'POST', body: JSON.stringify(p) })
+export const api_updatePromotion = (id: string, p: Record<string, unknown>) =>
+  api<Promotion>(`/api/promotions/${id}`, { method: 'PUT', body: JSON.stringify(p) })
+export const api_deletePromotion = (id: string) => api<{ success: boolean }>(`/api/promotions/${id}`, { method: 'DELETE' })
+
+// ===== DEVOLUCIONES =====
+export const api_returns = () => api<ReturnRecord[]>('/api/returns')
+export const api_createReturn = (r: { saleId: string; reason: string; userId: string; itemIds?: string[] }) =>
+  api<ReturnRecord>('/api/returns', { method: 'POST', body: JSON.stringify(r) })
 
 // Tipos de datos del dashboard y reportes
 export interface DashboardData {

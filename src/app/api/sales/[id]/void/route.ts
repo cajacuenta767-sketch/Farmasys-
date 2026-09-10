@@ -30,6 +30,33 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             })
           })
         }
+        // Kardex: entrada por anulación de venta
+        await tx.inventoryMovement.create({
+          data: {
+            productId: item.productId,
+            lotNumber: item.lotNumber,
+            type: 'ENTRADA',
+            quantity: item.quantity,
+            reason: 'Anulación de venta',
+            reference: sale.invoiceNumber,
+            userId: sale.userId,
+          },
+        })
+        // Caja: retirar el efectivo de la venta anulada de la sesión abierta
+        if (sale.paymentMethod === 'EFECTIVO') {
+          const cashSession = await tx.cashSession.findFirst({ where: { status: 'ABIERTA' } })
+          if (cashSession) {
+            await tx.cashMovement.create({
+              data: {
+                cashSessionId: cashSession.id,
+                type: 'RETIRO',
+                amount: item.subtotal,
+                reason: `Anulación de venta ${sale.invoiceNumber} (${item.productName})`,
+                userId: sale.userId,
+              },
+            })
+          }
+        }
       }
       await tx.sale.update({
         where: { id },

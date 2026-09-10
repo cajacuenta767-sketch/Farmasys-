@@ -28,3 +28,29 @@ Stage Summary:
 - Credenciales: admin/admin123, farmacia/farm123, vendedor/venta123
 - Verificado end-to-end con navegador: ventas, inventario FEFO, compras, anulaciones, reportes
 - Listo para producción de demostración
+
+---
+Task ID: 2
+Agent: main (Super Z)
+Task: Expansión del sistema de 12 a 20 módulos (segunda fase)
+
+Work Log:
+- Esquema Prisma ampliado de 12 a 20 modelos: CashSession, CashMovement, InventoryMovement (kardex), ControlledLog, Quotation, QuotationItem, Promotion, Return
+- db:push ejecutado, cliente Prisma regenerado y servidor dev reiniciado (el proceso viejo tenía el cliente en caché)
+- 8 rutas API nuevas: cash-sessions(+[id] con arqueo), cash-movements, inventory-movements (merma FEFO/entrada/ajuste), controlled-logs (valida receta en salidas), quotations(+[id]), promotions(+[id]), returns (reingresa lotes), alerts (centro consolidado)
+- Integración transaccional de ventas: cada venta registra kardex SALIDA + libro de controlados (si el producto es controlado) + movimiento VENTA en caja abierta
+- Integración de anulación: devuelve stock + kardex ENTRADA + RETIRO de caja
+- Integración de recepción de compras: kardex ENTRADA + libro de controlados automático
+- 8 vistas nuevas: cash-view (turnos + arqueo con diferencia), alerts-view (KPIs + filtros), movements-view (kardex con filtros y costo de mermas), controlled-view (libro oficial), quotations-view (CRUD + estados), promotions-view (switch activo), returns-view (búsqueda de venta + items), categories-view (tarjetas)
+- Navegación page.tsx ampliada a 20 módulos agrupados en General/Operación/Inventario/Directorio/Administración
+- MODULES_BY_ROLE actualizado: ADMIN 20, FARMACEUTICO 18, VENDEDOR 9 módulos
+- Seed ampliado: 43 movimientos kardex, 4+1 registros controlados, 3 turnos de caja (2 cerrados con arqueo + 1 abierto), 3 cotizaciones, 4 promociones, 2 devoluciones
+- Corregidos: import duplicado fmtDateTime en alerts-view, checkbox residual en returns-view, regla lint set-state-in-effect (patrón .then), cálculo costo de mermas con purchasePrice
+- Verificación end-to-end con agent-browser: apertura/cierre de caja con arqueo (faltante -$2 detectado correctamente), ingreso de efectivo $25.50, venta POS FV-00018 $5.04 → caja VENTA automática, venta Diazepam FV-00019 → libro controlados automático, kardex 43→44 movimientos, devolución DEV-00002 $13.00 reingresada, cotización CT-00003 creada, centro de alertas con 4 alertas
+- Vista móvil y lint final limpios, sin errores en dev.log
+
+Stage Summary:
+- Sistema de farmacias con 20 MÓDULOS completos, 22 rutas API, 20 tablas, 3 roles
+- Cadena de trazabilidad completa: venta → FEFO → kardex → controlados → caja
+- Credenciales: admin/admin123, farmacia/farm123, vendedor/venta123
+- Verificado end-to-end con navegador (desktop y móvil)

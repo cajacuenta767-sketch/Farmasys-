@@ -2,12 +2,14 @@ import { db } from '@/lib/db'
 import { ok, bad, num } from '@/lib/api-helpers'
 
 // POST /api/purchases/[id]/receive — Recibir mercancía: crea/actualiza lotes e ingresa al inventario
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const purchase = await db.purchase.findUnique({ where: { id }, include: { items: true } })
+    const userId = new URL(req.url).searchParams.get('userId') || undefined
+    const purchase = await db.purchase.findUnique({ where: { id }, include: { items: true, user: { select: { id: true } } } })
     if (!purchase) return bad('Compra no encontrada', 404)
     if (purchase.status !== 'PENDIENTE') return bad('Esta compra ya fue procesada')
+    const operatorId = userId || purchase.user.id
 
     await db.$transaction(async (tx) => {
       for (const item of purchase.items) {
@@ -32,6 +34,30 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
               quantity: item.quantity,
               expiryDate,
               purchasePrice: item.unitCost,
+            },
+          })
+        }
+        // Kardex: entrada por compra recibida
+        await tx.inventoryMovement.create({
+          data: {
+            productId: item.productId,
+            lotNumber,
+            type: 'ENTRADA',
+            quantity: item.quantity,
+            reason: `Compra recibida a proveedor`,
+            reference: purchase.orderNumber,
+            userId: operatorId,
+          },
+        })
+        // Libro de controlados: entrada de sustancia controlada
+        if (product.controlled) {
+          await tx.controlledLog.create({
+            data: {
+              productId: item.productId,
+              lotNumber,
+              operation: 'ENTRADA',
+              quantity: item.quantity,
+              userId: operatorId,
             },
           })
         }

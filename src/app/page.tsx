@@ -8,6 +8,7 @@ import { canAccess, MODULES_BY_ROLE } from '@/lib/pharmacy-types'
 import { LoginView } from '@/components/pharmacy/login-view'
 import { DashboardView } from '@/components/pharmacy/dashboard-view'
 import { PosView } from '@/components/pharmacy/pos-view'
+import { CashView } from '@/components/pharmacy/cash-view'
 import { ProductsView } from '@/components/pharmacy/products-view'
 import { InventoryView } from '@/components/pharmacy/inventory-view'
 import { SalesView } from '@/components/pharmacy/sales-view'
@@ -18,25 +19,41 @@ import { PrescriptionsView } from '@/components/pharmacy/prescriptions-view'
 import { ReportsView } from '@/components/pharmacy/reports-view'
 import { UsersView } from '@/components/pharmacy/users-view'
 import { SettingsView } from '@/components/pharmacy/settings-view'
+import { AlertsView } from '@/components/pharmacy/alerts-view'
+import { MovementsView } from '@/components/pharmacy/movements-view'
+import { ControlledView } from '@/components/pharmacy/controlled-view'
+import { QuotationsView } from '@/components/pharmacy/quotations-view'
+import { PromotionsView } from '@/components/pharmacy/promotions-view'
+import { ReturnsView } from '@/components/pharmacy/returns-view'
+import { CategoriesView } from '@/components/pharmacy/categories-view'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { useToast } from '@/hooks/use-toast'
 import {
   Cross, LayoutDashboard, ShoppingCart, Pill, Warehouse, ReceiptText,
   ClipboardList, Truck, Users, FileHeart, BarChart3, UserCog, Settings,
-  LogOut, Menu, ChevronRight,
+  LogOut, Menu, ChevronRight, Wallet, BellRing, ArrowLeftRight, ShieldAlert,
+  FileText, Undo2, Percent, Tags,
 } from 'lucide-react'
 
 const NAV = [
   { id: 'dashboard', label: 'Panel principal', icon: LayoutDashboard, group: 'General' },
   { id: 'pos', label: 'Punto de Venta', icon: ShoppingCart, group: 'Operación' },
+  { id: 'cash', label: 'Caja y Arqueo', icon: Wallet, group: 'Operación' },
   { id: 'sales', label: 'Ventas y Facturación', icon: ReceiptText, group: 'Operación' },
+  { id: 'quotations', label: 'Cotizaciones', icon: FileText, group: 'Operación' },
+  { id: 'returns', label: 'Devoluciones', icon: Undo2, group: 'Operación' },
   { id: 'prescriptions', label: 'Recetas Médicas', icon: FileHeart, group: 'Operación' },
   { id: 'products', label: 'Medicamentos', icon: Pill, group: 'Inventario' },
+  { id: 'categories', label: 'Categorías', icon: Tags, group: 'Inventario' },
+  { id: 'promotions', label: 'Promociones', icon: Percent, group: 'Inventario' },
   { id: 'inventory', label: 'Inventario y Lotes', icon: Warehouse, group: 'Inventario' },
+  { id: 'movements', label: 'Kardex de Movimientos', icon: ArrowLeftRight, group: 'Inventario' },
+  { id: 'alerts', label: 'Centro de Alertas', icon: BellRing, group: 'Inventario' },
   { id: 'purchases', label: 'Compras', icon: ClipboardList, group: 'Inventario' },
   { id: 'suppliers', label: 'Proveedores', icon: Truck, group: 'Directorio' },
   { id: 'customers', label: 'Clientes', icon: Users, group: 'Directorio' },
+  { id: 'controlled', label: 'Medicamentos Controlados', icon: ShieldAlert, group: 'Administración' },
   { id: 'reports', label: 'Reportes', icon: BarChart3, group: 'Administración' },
   { id: 'users', label: 'Usuarios y Roles', icon: UserCog, group: 'Administración' },
   { id: 'settings', label: 'Configuración', icon: Settings, group: 'Administración' },
@@ -195,6 +212,7 @@ export default function Home() {
           <main className="flex-1 p-4 md:p-6 max-w-[1400px] w-full mx-auto">
             {module === 'dashboard' && <DashboardView key={dashKey} userName={user.name} onNavigate={go} />}
             {module === 'pos' && <PosView user={user} onSaleDone={() => setDashKey((k) => k + 1)} />}
+            {module === 'cash' && <CashView user={user} />}
             {module === 'products' && <ProductsView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
             {module === 'inventory' && <InventoryView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
             {module === 'sales' && <SalesView canVoid={user.role === 'ADMIN'} />}
@@ -205,6 +223,13 @@ export default function Home() {
             {module === 'reports' && <ReportsView />}
             {module === 'users' && user.role === 'ADMIN' && <UsersView currentUserId={user.id} />}
             {module === 'settings' && user.role === 'ADMIN' && <SettingsView />}
+            {module === 'alerts' && <AlertsView onNavigate={go} />}
+            {module === 'movements' && <MovementsView user={user} />}
+            {module === 'controlled' && user.role !== 'VENDEDOR' && <ControlledView user={user} />}
+            {module === 'quotations' && <QuotationsView user={user} />}
+            {module === 'promotions' && <PromotionsView />}
+            {module === 'returns' && <ReturnsView user={user} canEdit={true} />}
+            {module === 'categories' && <CategoriesView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
           </main>
 
           <footer className="mt-auto border-t bg-white py-3 text-center text-xs text-muted-foreground">

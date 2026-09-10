@@ -130,7 +130,49 @@ export async function POST(req: Request) {
               subtotal: Math.round(take * it.unitPrice * 100) / 100,
             },
           })
+          // Kardex: salida por venta
+          await tx.inventoryMovement.create({
+            data: {
+              productId: it.productId,
+              lotNumber: lot.lotNumber,
+              type: 'SALIDA',
+              quantity: take,
+              reason: 'Venta en mostrador',
+              reference: invoiceNumber,
+              userId,
+            },
+          })
+          // Libro de controlados: toda salida queda registrada
+          if (p.controlled) {
+            await tx.controlledLog.create({
+              data: {
+                productId: it.productId,
+                lotNumber: lot.lotNumber,
+                operation: 'SALIDA',
+                quantity: take,
+                patientName: customerName || 'Cliente ocasional',
+                folio: str(b.prescriptionFolio) || null,
+                userId,
+              },
+            })
+          }
           remaining -= take
+        }
+      }
+
+      // Caja: registrar la venta en efectivo dentro de la sesión abierta
+      if (paymentMethod === 'EFECTIVO') {
+        const cashSession = await tx.cashSession.findFirst({ where: { status: 'ABIERTA' } })
+        if (cashSession) {
+          await tx.cashMovement.create({
+            data: {
+              cashSessionId: cashSession.id,
+              type: 'VENTA',
+              amount: total,
+              reason: `Venta ${invoiceNumber}`,
+              userId,
+            },
+          })
         }
       }
 
