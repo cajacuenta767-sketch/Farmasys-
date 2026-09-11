@@ -81,3 +81,20 @@ Stage Summary:
 - Sistema de farmacias con 24 MÓDULOS, 30 rutas API, 26 tablas, 3 roles (24/23/9 módulos)
 - Fase 3 cerrada: seguridad profesional, trazabilidad clínica y operativa completa
 - Credenciales: admin/admin123, farmacia/farm123, vendedor/venta123
+
+---
+Task ID: 4
+Agent: main (Super Z)
+Task: Preparar repositorio y subir FarmaSys a GitHub del usuario
+
+Work Log:
+- Verificado sistema completo operativo (24 módulos, 27 APIs, HTTP 200)
+- Reforzado .gitignore: excluye *.db, .env, tool-results, .zscripts, upload, download, mini-services, examples, worklog
+- Des-trackeados archivos sensibles: .env y db/custom.db (datos locales, no van al repo)
+- Creado README.md profesional en español: 24 módulos documentados, stack, instalación, credenciales demo, estructura
+- Commit "FarmaSys v1.0" (197 archivos) en rama main
+- Generado respaldo download/farmasys.zip (3.8M) vía git archive
+- Push pendiente: sin credenciales GitHub (no hay gh CLI, SSH ni tokens); se solicitó PAT al usuario
+
+Stage Summary:
+- Repo 100% listo para push; falta únicamente token de acceso personal del usuario
