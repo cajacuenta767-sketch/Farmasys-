@@ -9,7 +9,7 @@ const globalForPrisma = globalThis as unknown as {
 /** Base vacía con el esquema ya aplicado; se genera en `npm run build` (scripts/prepare-db.mjs). */
 function plantillaDb(): string | null {
   const candidatos = [process.env.FARMASYS_TEMPLATE_DB, path.join(process.cwd(), 'prisma', 'template.db')].filter(Boolean) as string[]
-  return candidatos.find((c) => fs.existsSync(c)) || null
+  return candidatos.find((c) => fs.existsSync(/*turbopackIgnore: true*/ c)) || null
 }
 
 /**
@@ -32,12 +32,12 @@ function resolveDatabaseUrl(): string | undefined {
     archivo = path.isAbsolute(relativo) ? relativo : path.resolve(process.cwd(), 'prisma', relativo)
   }
 
-  if (!fs.existsSync(archivo)) {
+  if (!fs.existsSync(/*turbopackIgnore: true*/ archivo)) {
     const plantilla = plantillaDb()
     try {
-      fs.mkdirSync(path.dirname(archivo), { recursive: true })
+      fs.mkdirSync(/*turbopackIgnore: true*/ path.dirname(archivo), { recursive: true })
       if (plantilla) {
-        fs.copyFileSync(plantilla, archivo)
+        fs.copyFileSync(/*turbopackIgnore: true*/ plantilla, archivo)
         console.log(`[db] Base de datos nueva creada en ${archivo}`)
       } else {
         console.warn(`[db] No existe ${archivo} ni la plantilla prisma/template.db. Ejecuta "npm run db:push".`)

@@ -11,7 +11,7 @@ export function carpetaDatos(): string {
 
 export function leerJson<T>(nombre: string): T | null {
   try {
-    return JSON.parse(fs.readFileSync(path.join(carpetaDatos(), nombre), 'utf8')) as T
+    return JSON.parse(fs.readFileSync(/*turbopackIgnore: true*/ path.join(carpetaDatos(), nombre), 'utf8')) as T
   } catch {
     return null
   }
@@ -20,8 +20,8 @@ export function leerJson<T>(nombre: string): T | null {
 /** Escribe el archivo; si el disco es de solo lectura, devuelve false y se sigue en memoria. */
 export function guardarJson(nombre: string, valor: unknown): boolean {
   try {
-    fs.mkdirSync(carpetaDatos(), { recursive: true })
-    fs.writeFileSync(path.join(carpetaDatos(), nombre), JSON.stringify(valor, null, 2))
+    fs.mkdirSync(/*turbopackIgnore: true*/ carpetaDatos(), { recursive: true })
+    fs.writeFileSync(/*turbopackIgnore: true*/ path.join(carpetaDatos(), nombre), JSON.stringify(valor, null, 2))
     return true
   } catch {
     return false
@@ -30,7 +30,7 @@ export function guardarJson(nombre: string, valor: unknown): boolean {
 
 export function fechaModificacion(nombre: string): number {
   try {
-    return fs.statSync(path.join(carpetaDatos(), nombre)).mtimeMs
+    return fs.statSync(/*turbopackIgnore: true*/ path.join(carpetaDatos(), nombre)).mtimeMs
   } catch {
     return 0
   }
