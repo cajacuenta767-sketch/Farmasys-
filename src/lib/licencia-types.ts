@@ -21,3 +21,12 @@ export interface ResumenLicencia {
   desactualizada: boolean
   ultimo_latido: string | null
 }
+
+export interface DispositivoVinculado {
+  huella: string
+  nombre: string
+  plataforma: string
+  primera_vez: string
+  ultima_vez: string
+  verificaciones: number
+}

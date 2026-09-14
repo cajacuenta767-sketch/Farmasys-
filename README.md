@@ -17,8 +17,8 @@ del panel [CONTROL](https://github.com/cajacuenta767-sketch/CONTROL) de la agenc
 
 | Plataforma | Cómo | Dónde quedan los datos |
 |---|---|---|
-| **Windows** | `FarmaSys-Setup.exe` (instalador NSIS con Electron) desde [Releases](https://github.com/cajacuenta767-sketch/Farmasys-/releases/latest) | `%APPDATA%\FarmaSys\datos` (base SQLite, licencia, registro) |
-| **Android** | `FarmaSys.apk` desde Releases. Al abrir, escribe la dirección de tu servidor FarmaSys | En el servidor |
+| **Windows** | `FarmaSys-Setup.exe` (instalador NSIS con Electron) desde [Releases](https://github.com/cajacuenta767-sketch/Farmasys-/releases/latest). Al abrir pide el código de verificación `CTL-…` | `%APPDATA%\FarmaSys\datos` (base SQLite, licencia, registro) |
+| **Android** | `FarmaSys.apk` desde Releases. Al abrir pide la dirección del servidor y el código de verificación `CTL-…` de la licencia de la farmacia | En el servidor |
 | **Web** | Docker (`docker compose up -d`) o Vercel/Node. Instalable desde el navegador como PWA | Volumen `/datos` o base remota |
 
 La página `/descargas` de la web muestra estos enlaces al cliente final.
@@ -65,6 +65,12 @@ código de producto `farmasys`:
 - **Código de emergencia**: el asesor lo emite en CONTROL → Licencia → Código de emergencia para la
   huella del equipo; se pega en la pantalla "Licencia" y desbloquea 72 h sin red.
 - **Huella**: `CONTROL_HUELLA` → `CONTROL_DOMINIO` (web) → nombre del equipo (escritorio/VPS).
+- **Código de verificación en los instalables**: el instalador de Windows pide la clave `CTL-…` en su
+  primera pantalla (si el repositorio define la variable `CONTROL_URL`, el instalador ya trae fijada la URL
+  del panel y el cliente solo escribe el código). La app Android pide la dirección del servidor y el mismo
+  código `CTL-…`; el servidor lo comprueba contra su licencia (`POST /api/licencia/verificar`), registra la
+  huella del teléfono y el administrador ve y desvincula dispositivos en la pantalla Licencia. Un teléfono
+  no consume activaciones en CONTROL: pertenece a la licencia de la farmacia.
 - Versión instalada: `src/lib/version.ts`. Si CONTROL fija una versión actual mayor, la app avisa.
 
 Variables (opcionales, todo se puede escribir desde la pantalla "Licencia"): `CONTROL_URL`,

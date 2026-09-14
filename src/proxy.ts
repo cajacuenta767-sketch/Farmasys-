@@ -7,9 +7,18 @@ import { estadoLicencia, latidoSiHaceFalta } from '@/lib/licencia'
 import { sesionDe } from '@/lib/sesion'
 import { esRutaLibre, puedeLlamarApi } from '@/lib/permisos'
 
+const CORS_LIBRE = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'content-type' }
+
 export default function proxy(req: NextRequest) {
   const ruta = req.nextUrl.pathname
-  if (ruta.startsWith('/api/licencia') || ruta === '/api/salud') return NextResponse.next()
+  if (ruta === '/api/salud') {
+    // La app Android comprueba el servidor desde otro origen (capacitor://, https://localhost)
+    if (req.method === 'OPTIONS') return new NextResponse(null, { status: 204, headers: CORS_LIBRE })
+    const res = NextResponse.next()
+    for (const [k, v] of Object.entries(CORS_LIBRE)) res.headers.set(k, v)
+    return res
+  }
+  if (ruta.startsWith('/api/licencia')) return NextResponse.next()
 
   const lic = estadoLicencia()
   latidoSiHaceFalta()

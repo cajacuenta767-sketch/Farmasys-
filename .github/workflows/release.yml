@@ -44,7 +44,12 @@ jobs:
         env: { NEXT_TELEMETRY_DISABLED: '1' }
       - name: Empaquetar con electron-builder
         working-directory: desktop
+        env:
+          # Variable opcional del repositorio: URL del panel CONTROL que el instalador deja fijada
+          CONTROL_URL: ${{ vars.CONTROL_URL }}
+        shell: bash
         run: |
+          node -e "require('fs').writeFileSync('config.json', JSON.stringify({ controlUrl: process.env.CONTROL_URL || '' }, null, 2))"
           npm ci --no-audit --no-fund
           npm run build
       - uses: actions/upload-artifact@v4

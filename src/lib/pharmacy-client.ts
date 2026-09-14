@@ -6,7 +6,7 @@ import type {
   Quotation, Promotion, ReturnRecord, AlertsData,
   DrugInteraction, InventoryCount, SuggestionsData, AuditLogEntry,
 } from './pharmacy-types'
-import type { ResumenLicencia } from './licencia-types'
+import type { ResumenLicencia, DispositivoVinculado } from './licencia-types'
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public codigo?: string, public motivo?: string) { super(message) }
@@ -58,6 +58,10 @@ export const api_licenciaActivar = (clave: string, url: string) =>
 export const api_licenciaReactivar = () => api<ResumenLicencia & { resultado: string }>('/api/licencia/reactivar', { method: 'POST' })
 export const api_licenciaEmergencia = (codigo: string) =>
   api<ResumenLicencia & { resultado: string }>('/api/licencia/emergencia', { method: 'POST', body: JSON.stringify({ codigo }) })
+
+export const api_dispositivos = () => api<DispositivoVinculado[]>('/api/licencia/dispositivos')
+export const api_quitarDispositivo = (huella: string) =>
+  api<DispositivoVinculado[]>('/api/licencia/dispositivos', { method: 'DELETE', body: JSON.stringify({ huella }) })
 
 export const api_login = (username: string, password: string) =>
   api<SessionUser>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })

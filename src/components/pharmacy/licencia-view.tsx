@@ -4,13 +4,13 @@
 // estado, clave, plan, vence, soporte hasta, funciona sin internet hasta, equipo, versión,
 // botón "Reactivar / verificar ahora" y campo para el código de emergencia (72 h).
 import { useCallback, useEffect, useState } from 'react'
-import { api_licencia, api_licenciaActivar, api_licenciaReactivar, api_licenciaEmergencia, fmtDate, fmtDateTime } from '@/lib/pharmacy-client'
-import type { ResumenLicencia } from '@/lib/licencia-types'
+import { api_licencia, api_licenciaActivar, api_licenciaReactivar, api_licenciaEmergencia, api_dispositivos, api_quitarDispositivo, fmtDate, fmtDateTime } from '@/lib/pharmacy-client'
+import type { ResumenLicencia, DispositivoVinculado } from '@/lib/licencia-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Cross, KeyRound, RefreshCw, LifeBuoy, ShieldCheck, ShieldAlert, Monitor } from 'lucide-react'
+import { Cross, KeyRound, RefreshCw, LifeBuoy, ShieldCheck, ShieldAlert, Monitor, Smartphone, Trash2 } from 'lucide-react'
 
 const ESTADOS: Record<string, string> = {
   activa: 'Licencia activa', mora: 'Licencia vencida: renueva pronto', pendiente_pago: 'Pago pendiente de confirmación',
@@ -31,6 +31,15 @@ export function LicenciaView({ inicial, bloqueante = false, onValida, puedeCambi
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
   const [cargando, setCargando] = useState<string | null>(null)
   const [cambiar, setCambiar] = useState(false)
+  const [dispositivos, setDispositivos] = useState<DispositivoVinculado[]>([])
+
+  useEffect(() => {
+    if (!bloqueante) api_dispositivos().then(setDispositivos).catch(() => {})
+  }, [bloqueante])
+
+  async function desvincular(huella: string) {
+    try { setDispositivos(await api_quitarDispositivo(huella)) } catch (e) { setAviso({ tipo: 'error', texto: e instanceof Error ? e.message : 'Error' }) }
+  }
 
   const cargar = useCallback(async () => {
     const d = await api_licencia()
@@ -141,6 +150,29 @@ export function LicenciaView({ inicial, bloqueante = false, onValida, puedeCambi
           <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold text-white ${tono}`}>{valido ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}{titulo}</span>
         </div>
         <Card><CardContent className="p-5">{contenido}</CardContent></Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2"><Smartphone className="h-4 w-4 text-emerald-600" /> Dispositivos vinculados</CardTitle>
+            <CardDescription>Equipos y teléfonos que abrieron esta instalación con el código de verificación de la licencia. Al desvincular uno, tendrá que ingresar el código de nuevo.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {dispositivos.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Ningún dispositivo vinculado todavía. En la app Android se pide la dirección del servidor y el código CTL-… de esta licencia.</p>
+            ) : (
+              <div className="divide-y rounded-lg border">
+                {dispositivos.map((d) => (
+                  <div key={d.huella} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                    <div className="flex-1 min-w-[200px]">
+                      <p className="font-medium">{d.nombre} <span className="text-xs text-muted-foreground">({d.plataforma})</span></p>
+                      <p className="text-xs text-muted-foreground">Huella <code>{d.huella}</code> · vinculado {fmtDate(d.primera_vez)} · última vez {fmtDateTime(d.ultima_vez)} · {d.verificaciones} verificaciones</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => desvincular(d.huella)}><Trash2 className="h-3.5 w-3.5 mr-1" /> Desvincular</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     )
   }

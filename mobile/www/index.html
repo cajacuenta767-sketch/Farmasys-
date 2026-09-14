@@ -11,45 +11,91 @@
     h1 { margin: 0 0 4px; font-size: 22px; display: flex; align-items: center; gap: 10px; }
     .logo { width: 40px; height: 40px; border-radius: 12px; background: #059669; display: grid; place-items: center; font-size: 26px; font-weight: 700; color: #fff; }
     p { color: #a7f3d0; font-size: 14px; margin: 6px 0 18px; }
-    label { font-size: 13px; display: block; margin-bottom: 6px; }
+    label { font-size: 13px; display: block; margin: 12px 0 6px; }
     input { width: 100%; box-sizing: border-box; padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.2); background: rgba(0,0,0,.25); color: #fff; font-size: 16px; }
+    input.codigo { font-family: ui-monospace, monospace; letter-spacing: 1px; text-transform: uppercase; }
     button { margin-top: 14px; width: 100%; padding: 13px; border: 0; border-radius: 10px; background: #10b981; color: #fff; font-size: 16px; font-weight: 600; }
+    button:disabled { opacity: .6; }
     .e { color: #fca5a5; font-size: 13px; margin-top: 10px; min-height: 18px; }
+    .ok { color: #6ee7b7; }
     .s { font-size: 12px; color: #6ee7b7; margin-top: 16px; }
+    .s a { color: #fff; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <form class="c" id="f">
     <h1><span class="logo">+</span> FarmaSys</h1>
-    <p>Escribe la dirección del servidor FarmaSys de tu farmacia. Se guarda en este teléfono.</p>
+    <p id="intro">Conecta este dispositivo con el servidor de tu farmacia. Necesitas la dirección del servidor y el código de verificación de la licencia (CTL-…) que entregó tu asesor.</p>
     <label for="u">Dirección del servidor</label>
     <input id="u" type="url" inputmode="url" placeholder="https://farmacia.midominio.com" autocapitalize="none" autocomplete="url" required />
-    <button type="submit">Conectar</button>
+    <label for="k">Código de verificación (licencia CONTROL)</label>
+    <input id="k" class="codigo" placeholder="CTL-XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" required />
+    <button type="submit" id="b">Verificar y conectar</button>
     <div class="e" id="e"></div>
-    <div class="s">Las licencias, usuarios y datos están en el servidor; cada rol ve solo su espacio.</div>
+    <div class="s">El código se comprueba contra la licencia CONTROL del servidor; cada dispositivo queda vinculado y el administrador puede desvincularlo desde la pantalla Licencia. <a href="?cambiar=1" id="cambiar" hidden>Cambiar servidor o código</a></div>
   </form>
   <script>
-    const CLAVE = 'farmasys_servidor';
-    const u = document.getElementById('u');
-    const e = document.getElementById('e');
-    const guardada = localStorage.getItem(CLAVE);
+    const CLAVE = 'farmasys_vinculo';
+    const GRACIA_MS = 7 * 24 * 3600 * 1000; // si el servidor no responde, se permite entrar 7 días desde la última verificación
+    const $ = (id) => document.getElementById(id);
     const params = new URLSearchParams(location.search);
-    if (guardada) u.value = guardada;
-    // Al abrir la app, si ya hay servidor guardado, entra directo (salvo que se pida cambiarlo con ?cambiar=1)
-    if (guardada && !params.has('cambiar')) location.replace(guardada);
-    document.getElementById('f').addEventListener('submit', async (ev) => {
+    const vinculo = leer();
+
+    function leer() { try { return JSON.parse(localStorage.getItem(CLAVE) || 'null'); } catch { return null; } }
+    function guardar(v) { localStorage.setItem(CLAVE, JSON.stringify(v)); }
+    function huella() {
+      let h = localStorage.getItem('farmasys_huella');
+      if (!h) { h = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)).replace(/-/g, '').slice(0, 32); localStorage.setItem('farmasys_huella', h); }
+      return h;
+    }
+    function normalizar(url) { url = url.trim().replace(/\/+$/, ''); return /^https?:\/\//i.test(url) ? url : 'https://' + url; }
+    function mensaje(texto, ok) { $('e').textContent = texto; $('e').className = ok ? 'e ok' : 'e'; }
+
+    async function verificar(url, clave) {
+      const r = await fetch(url + '/api/licencia/verificar', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, cache: 'no-store',
+        body: JSON.stringify({ clave, huella: huella(), nombre_equipo: navegador(), plataforma: 'android' }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) { const err = new Error(d.error || ('El servidor respondió ' + r.status)); err.rechazo = r.status === 402 || r.status === 403 || r.status === 400; throw err; }
+      return d;
+    }
+    function navegador() { const ua = navigator.userAgent; const m = ua.match(/\(([^)]+)\)/); return 'Android · ' + (m ? m[1].split(';').slice(0, 3).join(';').trim() : 'dispositivo'); }
+
+    async function entrar(url, clave, silencioso) {
+      try {
+        const d = await verificar(url, clave);
+        guardar({ url, clave, verificado_en: Date.now(), farmacia: d.farmacia });
+        location.replace(url);
+      } catch (err) {
+        if (err.rechazo) { localStorage.removeItem(CLAVE); mensaje(err.message); return; }
+        // Sin red o servidor caído: entra si la última verificación es reciente
+        const v = leer();
+        if (v && v.url === url && Date.now() - v.verificado_en < GRACIA_MS) { location.replace(url); return; }
+        mensaje('No se pudo conectar: ' + err.message + (silencioso ? '' : '. Revisa la dirección o tu conexión.'));
+      }
+    }
+
+    if (vinculo) { $('u').value = vinculo.url; $('k').value = vinculo.clave; $('cambiar').hidden = false; }
+    if (vinculo && !params.has('cambiar')) {
+      $('intro').textContent = 'Verificando la licencia de ' + (vinculo.farmacia || 'tu farmacia') + '…';
+      $('b').disabled = true;
+      entrar(vinculo.url, vinculo.clave, true).finally(() => { $('b').disabled = false; });
+    }
+
+    $('f').addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      let url = u.value.trim().replace(/\/+$/, '');
-      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-      e.textContent = 'Comprobando…';
+      const url = normalizar($('u').value);
+      const clave = $('k').value.trim().toUpperCase();
+      if (!/^CTL-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(clave)) { mensaje('El código debe tener el formato CTL-XXXX-XXXX-XXXX-XXXX'); return; }
+      $('b').disabled = true; mensaje('Verificando…', true);
       try {
         const r = await fetch(url + '/api/salud', { cache: 'no-store' });
         if (!r.ok) throw new Error('El servidor respondió ' + r.status);
-        localStorage.setItem(CLAVE, url);
-        location.href = url;
-      } catch (err) {
-        e.textContent = 'No se pudo conectar: ' + (err && err.message ? err.message : 'revisa la dirección');
-      }
+      } catch (err) { mensaje('No se pudo conectar con el servidor: ' + (err.message || 'revisa la dirección')); $('b').disabled = false; return; }
+      await entrar(url, clave, false);
+      $('b').disabled = false;
     });
   </script>
 </body>

@@ -17,7 +17,11 @@ FARMASYS_URL=https://farmacia.midominio.com npx cap sync android   # opcional: f
 cd android && ./gradlew assembleRelease
 ```
 
-Sin `FARMASYS_URL`, la app muestra una pantalla donde el usuario escribe la dirección del servidor
-una sola vez (queda guardada en el teléfono; para cambiarla, abre la app con `?cambiar=1` o borra sus datos).
+La app pide la dirección del servidor y el **código de verificación** `CTL-…` de la licencia de la
+farmacia; lo comprueba contra `POST /api/licencia/verificar` del servidor, que registra la huella del
+teléfono. Ambos quedan guardados en el teléfono; en cada apertura se vuelve a verificar (con 7 días de
+gracia sin red). Para cambiarlos, abre la app con `?cambiar=1`, o el administrador desvincula el
+dispositivo desde la pantalla Licencia. Con `FARMASYS_URL` definida al compilar, la app abre esa web
+directamente (sin pantalla previa), útil cuando el control de acceso ya lo hace la web.
 
 Alternativa sin APK: abrir la web en Chrome y elegir "Instalar aplicación" (PWA).

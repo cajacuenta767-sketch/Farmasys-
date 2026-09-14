@@ -8,6 +8,10 @@ const net = require('node:net')
 const http = require('node:http')
 
 const NOMBRE = 'FarmaSys'
+// desktop/config.json se rellena en la compilación (variable CONTROL_URL del repositorio): así el cliente
+// solo escribe su código de verificación CTL-… y no la dirección del panel CONTROL.
+let configuracion = {}
+try { configuracion = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')) } catch { /* sin config */ }
 let servidor = null
 let ventana = null
 
@@ -58,6 +62,7 @@ async function iniciar() {
       FARMASYS_DATA_DIR: datos,
       FARMASYS_TEMPLATE_DB: path.join(carpetaServidor, 'prisma', 'template.db'),
       FARMASYS_PLATAFORMA: 'escritorio',
+      ...(configuracion.controlUrl ? { CONTROL_URL: configuracion.controlUrl } : {}),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
