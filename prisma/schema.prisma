@@ -1,7 +1,7 @@
 // Sistema de Farmacias - Esquema de base de datos
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "windows"]
 }
 
 datasource db {
@@ -9,13 +9,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// USUARIOS DEL SISTEMA (roles: ADMIN, FARMACEUTICO, VENDEDOR)
+// USUARIOS DEL SISTEMA (roles: ADMIN, FARMACEUTICO, CAJERO — ver src/lib/permisos.ts)
 model User {
   id        String   @id @default(cuid())
   username  String   @unique
   password  String
   name      String
-  role      String   @default("VENDEDOR") // ADMIN | FARMACEUTICO | VENDEDOR
+  role      String   @default("CAJERO") // ADMIN | FARMACEUTICO | CAJERO
   email     String?
   phone     String?
   active    Boolean  @default(true)

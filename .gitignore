@@ -55,9 +55,20 @@ server.log
 /skills/
 # Base de datos (datos locales / privados)
 *.db
-!prisma/dev.db
 *.db-journal
 db/*.db*
+
+# Datos de la instalación (licencia, secreto de sesión)
+/data/
+
+# Empaquetado
+/desktop/dist/
+/desktop/node_modules/
+/mobile/node_modules/
+/mobile/android/
+/mobile/ios/
+*.apk
+*.keystore
 
 # Archivos internos del entorno
 tool-results/

@@ -1,9 +1,11 @@
 // Tipos compartidos del Sistema de Farmacias
+import type { Rol } from './permisos'
+
 export interface SessionUser {
   id: string
   username: string
   name: string
-  role: 'ADMIN' | 'FARMACEUTICO' | 'VENDEDOR'
+  role: Rol
 }
 
 export interface Product {
@@ -56,7 +58,7 @@ export interface Sale {
   id: string
   invoiceNumber: string
   customerId?: string | null
-  customer?: { id: string; name: string } | null
+  customer?: { id: string; name: string; document?: string | null } | null
   customerName?: string | null
   userId: string
   user?: { id: string; name: string } | null
@@ -379,25 +381,5 @@ export interface AuditLogEntry {
   createdAt: string
 }
 
-// Módulos disponibles y roles con acceso (24 módulos)
-export const MODULES_BY_ROLE: Record<string, string[]> = {
-  ADMIN: [
-    'dashboard', 'pos', 'cash', 'sales', 'quotations', 'returns', 'prescriptions',
-    'interactions', 'controlled',
-    'products', 'categories', 'promotions', 'inventory', 'counts', 'movements', 'alerts',
-    'purchases', 'suggestions', 'suppliers', 'customers',
-    'reports', 'audit', 'users', 'settings',
-  ],
-  FARMACEUTICO: [
-    'dashboard', 'pos', 'cash', 'sales', 'quotations', 'returns', 'prescriptions',
-    'interactions', 'controlled',
-    'products', 'categories', 'promotions', 'inventory', 'counts', 'movements', 'alerts',
-    'purchases', 'suggestions', 'suppliers', 'customers',
-    'reports',
-  ],
-  VENDEDOR: ['dashboard', 'pos', 'cash', 'sales', 'quotations', 'returns', 'customers', 'products', 'alerts'],
-}
-
-export function canAccess(role: string, module: string): boolean {
-  return (MODULES_BY_ROLE[role] || []).includes(module)
-}
+// Roles, módulos por rol y permisos: ver src/lib/permisos.ts (fuente única para cliente y servidor)
+export { MODULES_BY_ROLE, canAccess } from './permisos'

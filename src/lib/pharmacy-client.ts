@@ -6,6 +6,11 @@ import type {
   Quotation, Promotion, ReturnRecord, AlertsData,
   DrugInteraction, InventoryCount, SuggestionsData, AuditLogEntry,
 } from './pharmacy-types'
+import type { ResumenLicencia } from './licencia-types'
+
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public codigo?: string, public motivo?: string) { super(message) }
+}
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -13,7 +18,12 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error((data as { error?: string }).error || 'Error de conexión')
+  if (!res.ok) {
+    const d = data as { error?: string; codigo?: string; motivo?: string }
+    const err = new ApiError(d.error || 'Error de conexión', res.status, d.codigo, d.motivo)
+    if (typeof window !== 'undefined' && (res.status === 402 || res.status === 401)) window.dispatchEvent(new CustomEvent('farmasys:bloqueo', { detail: err }))
+    throw err
+  }
   return data as T
 }
 
@@ -37,11 +47,23 @@ export const daysUntil = (d: string | Date) => {
   return Math.ceil((date.getTime() - Date.now()) / (24 * 3600 * 1000))
 }
 
+export const api_me = () => api<SessionUser>('/api/auth/me')
+
+export const api_setupEstado = () => api<{ requiereConfiguracion: boolean }>('/api/setup')
+export const api_setupCrear = (d: Record<string, string>) => api<SessionUser>('/api/setup', { method: 'POST', body: JSON.stringify(d) })
+
+export const api_licencia = () => api<ResumenLicencia>('/api/licencia')
+export const api_licenciaActivar = (clave: string, url: string) =>
+  api<ResumenLicencia & { resultado: string }>('/api/licencia/activar', { method: 'POST', body: JSON.stringify({ clave, url }) })
+export const api_licenciaReactivar = () => api<ResumenLicencia & { resultado: string }>('/api/licencia/reactivar', { method: 'POST' })
+export const api_licenciaEmergencia = (codigo: string) =>
+  api<ResumenLicencia & { resultado: string }>('/api/licencia/emergencia', { method: 'POST', body: JSON.stringify({ codigo }) })
+
 export const api_login = (username: string, password: string) =>
   api<SessionUser>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })
 
-export const api_logout = (userId?: string, userName?: string) =>
-  api<{ success: boolean }>('/api/auth/logout', { method: 'POST', body: JSON.stringify({ userId, userName }) }).catch(() => undefined)
+export const api_logout = () =>
+  api<{ success: boolean }>('/api/auth/logout', { method: 'POST' }).catch(() => undefined)
 
 export const api_changePassword = (username: string, currentPassword: string, newPassword: string) =>
   api<{ success: boolean }>('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ username, currentPassword, newPassword }) })
@@ -85,7 +107,7 @@ export const api_deleteCustomer = (id: string) => api<{ success: boolean }>(`/ap
 export const api_suppliers = () => api<Supplier[]>('/api/suppliers')
 export const api_createSupplier = (s: Partial<Supplier>) => api<Supplier>('/api/suppliers', { method: 'POST', body: JSON.stringify(s) })
 export const api_updateSupplier = (id: string, s: Partial<Supplier>) => api<Supplier>(`/api/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(s) })
-export const api_deleteSupplier = (id: string) => api<{ success: boolean }>(`/api/suppliers/${id}`, { method: 'DELETE' })
+export const api_deleteSupplier = (id: string) => api<{ success: boolean; deactivated?: boolean }>(`/api/suppliers/${id}`, { method: 'DELETE' })
 
 export const api_prescriptions = () => api<Prescription[]>('/api/prescriptions')
 export const api_createPrescription = (p: Record<string, unknown>) => api<Prescription>('/api/prescriptions', { method: 'POST', body: JSON.stringify(p) })

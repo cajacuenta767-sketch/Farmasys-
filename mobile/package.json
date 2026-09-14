@@ -1,0 +1,21 @@
+{
+  "name": "farmasys-mobile",
+  "version": "2.0.0",
+  "description": "FarmaSys para Android (Capacitor): abre el servidor FarmaSys de la farmacia como app instalable",
+  "private": true,
+  "scripts": {
+    "add": "cap add android",
+    "sync": "cap sync android",
+    "assets": "capacitor-assets generate --android --iconBackgroundColor '#059669' --splashBackgroundColor '#022c22'",
+    "build": "cap sync android && cd android && ./gradlew assembleRelease",
+    "open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.1",
+    "@capacitor/core": "^7.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.1"
+  }
+}

@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { ok, bad, str } from '@/lib/api-helpers'
 import { hashPassword } from '@/lib/security'
 import { logAudit } from '@/lib/audit'
+import { esRol } from '@/lib/permisos'
 
 // GET /api/users
 export async function GET() {
@@ -23,11 +24,11 @@ export async function POST(req: Request) {
     const username = (str(b.username) || '').toLowerCase()
     const password = str(b.password)
     const name = str(b.name)
-    const role = str(b.role) || 'VENDEDOR'
+    const role = str(b.role) || 'CAJERO'
     const actor = str(b.actorName) || 'Sistema'
     if (!username || !password || !name) return bad('Usuario, contraseña y nombre son obligatorios')
     if (password.length < 6) return bad('La contraseña debe tener al menos 6 caracteres')
-    if (!['ADMIN', 'FARMACEUTICO', 'VENDEDOR'].includes(role)) return bad('Rol inválido')
+    if (!esRol(role)) return bad('Rol inválido')
 
     const exists = await db.user.findUnique({ where: { username } })
     if (exists) return bad('Ese nombre de usuario ya existe')

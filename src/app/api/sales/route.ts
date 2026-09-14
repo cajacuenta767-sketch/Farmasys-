@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { ok, bad, num, int, str, formatSeq } from '@/lib/api-helpers'
 import { logAudit } from '@/lib/audit'
+import { sesionDe } from '@/lib/sesion'
 
 const POINTS_PER = 10 // 1 punto por cada $10 de compra
 const POINT_VALUE = 0.10 // cada punto canjeado vale $0.10
@@ -15,6 +16,9 @@ export async function GET(req: Request) {
     const search = searchParams.get('search') || ''
 
     const where: Record<string, unknown> = {}
+    // El cajero solo ve sus propias ventas
+    const sesion = sesionDe(req)
+    if (sesion?.role === 'CAJERO') where.userId = sesion.id
     if (from || to) {
       const createdAt: Record<string, Date> = {}
       if (from) createdAt.gte = new Date(`${from}T00:00:00`)
@@ -73,7 +77,7 @@ export async function POST(req: Request) {
 
     const sale = await db.$transaction(async (tx) => {
       // Verificar stock disponible total por producto
-      const productIds = [...new Set(items.map((i: { productId: string }) => i.productId))]
+      const productIds = [...new Set<string>(items.map((i: { productId: string }) => String(i.productId)))]
       const products = await tx.product.findMany({
         where: { id: { in: productIds } },
         include: { lots: { where: { quantity: { gt: 0 } }, orderBy: { expiryDate: 'asc' } } },
@@ -150,6 +154,7 @@ export async function POST(req: Request) {
       const rxProductIds = new Set<string>()
       for (const it of items) {
         const p = products.find((x: { id: string }) => x.id === it.productId)
+        if (!p) throw new Error(`Producto no encontrado: ${it.productName || it.productId}`)
         let remaining = it.quantity
         for (const lot of p.lots) {
           if (remaining <= 0) break

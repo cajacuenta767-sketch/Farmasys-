@@ -48,7 +48,7 @@ export async function GET() {
     })
 
     const alerts = [
-      ...lowStock.map((a) => ({ type: 'STOCK', severity: a.severity, ...a })),
+      ...lowStock.map((a) => ({ type: 'STOCK', ...a })),
       ...expired.map((l) => ({
         type: 'CADUCIDAD' as const,
         severity: 'CRITICA',

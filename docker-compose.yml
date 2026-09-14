@@ -1,0 +1,37 @@
+services:
+  farmasys:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: file:/datos/farmasys.db
+      FARMASYS_DATA_DIR: /datos
+      # Licencia CONTROL (también se puede escribir desde la pantalla "Licencia")
+      CONTROL_URL: ${CONTROL_URL:-}
+      CONTROL_LICENCIA: ${CONTROL_LICENCIA:-}
+      CONTROL_DOMINIO: ${DOMINIO:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+    volumes:
+      - farmasys_datos:/datos
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO:-farmasys.localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_datos:/data
+      - caddy_config:/config
+    depends_on:
+      - farmasys
+
+volumes:
+  farmasys_datos:
+  caddy_datos:
+  caddy_config:

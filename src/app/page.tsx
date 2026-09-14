@@ -2,11 +2,14 @@
 
 // FarmaSys - Sistema Integral de Farmacias
 // Página principal: login + shell con navegación por módulos según rol
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { SessionUser } from '@/lib/pharmacy-types'
-import { canAccess, MODULES_BY_ROLE } from '@/lib/pharmacy-types'
-import { api_logout, api_changePassword } from '@/lib/pharmacy-client'
+import { canAccess, MODULES_BY_ROLE, ETIQUETA_ROL, MODULO_INICIAL, puedeEditarInventario } from '@/lib/permisos'
+import { api_logout, api_changePassword, api_licencia, api_setupEstado, api_me, ApiError } from '@/lib/pharmacy-client'
+import type { ResumenLicencia } from '@/lib/licencia-types'
 import { LoginView } from '@/components/pharmacy/login-view'
+import { LicenciaView } from '@/components/pharmacy/licencia-view'
+import { SetupView } from '@/components/pharmacy/setup-view'
 import { DashboardView } from '@/components/pharmacy/dashboard-view'
 import { PosView } from '@/components/pharmacy/pos-view'
 import { CashView } from '@/components/pharmacy/cash-view'
@@ -41,7 +44,7 @@ import {
   Cross, LayoutDashboard, ShoppingCart, Pill, Warehouse, ReceiptText,
   ClipboardList, Truck, Users, FileHeart, BarChart3, UserCog, Settings,
   LogOut, Menu, ChevronRight, Wallet, BellRing, ArrowLeftRight, ShieldAlert,
-  FileText, Undo2, Percent, Tags, FlaskConical, ClipboardCheck, Lightbulb, History, KeyRound,
+  FileText, Undo2, Percent, Tags, FlaskConical, ClipboardCheck, Lightbulb, History, KeyRound, BadgeCheck,
 } from 'lucide-react'
 
 const NAV = [
@@ -69,14 +72,16 @@ const NAV = [
   { id: 'audit', label: 'Bitácora de Auditoría', icon: History, group: 'Administración' },
   { id: 'users', label: 'Usuarios y Roles', icon: UserCog, group: 'Administración' },
   { id: 'settings', label: 'Configuración', icon: Settings, group: 'Administración' },
+  { id: 'licencia', label: 'Licencia', icon: BadgeCheck, group: 'Administración' },
 ] as const
 
-const SESSION_KEY = 'farmasys_session'
+type Arranque = 'cargando' | 'licencia' | 'instalacion' | 'listo'
 
 export default function Home() {
   const { toast } = useToast()
   const [user, setUser] = useState<SessionUser | null>(null)
-  const [ready, setReady] = useState(false)
+  const [arranque, setArranque] = useState<Arranque>('cargando')
+  const [licencia, setLicencia] = useState<ResumenLicencia | null>(null)
   const [module, setModule] = useState('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
   const [dashKey, setDashKey] = useState(0)
@@ -84,28 +89,51 @@ export default function Home() {
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
   const [pwSaving, setPwSaving] = useState(false)
 
+  // Arranque: 1) licencia CONTROL válida → 2) instalación con administrador → 3) sesión (cookie firmada)
+  const arrancar = useCallback(async () => {
+    try {
+      const lic = await api_licencia()
+      setLicencia(lic)
+      if (!lic.valido) { setArranque('licencia'); return }
+      const setup = await api_setupEstado()
+      if (setup.requiereConfiguracion) { setArranque('instalacion'); return }
+      const u = await api_me().catch(() => null)
+      if (u) { setUser(u); setModule((m) => (canAccess(u.role, m) ? m : MODULO_INICIAL[u.role])) }
+      setArranque('listo')
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 402) { setArranque('licencia'); return }
+      toast({ title: 'No se pudo conectar con el servidor', description: e instanceof Error ? e.message : '', variant: 'destructive' })
+      setArranque('listo')
+    }
+  }, [toast])
+
+  useEffect(() => { arrancar() }, [arrancar])
+
+  // Cualquier llamada a la API que devuelva 402 (licencia) o 401 (sesión) reinicia el flujo
   useEffect(() => {
-    const t = setTimeout(() => {
-      try {
-        const raw = localStorage.getItem(SESSION_KEY)
-        if (raw) setUser(JSON.parse(raw))
-      } catch { /* ignore */ }
-      setReady(true)
-    }, 0)
-    return () => clearTimeout(t)
+    const onBloqueo = (ev: Event) => {
+      const err = (ev as CustomEvent<ApiError>).detail
+      if (err.status === 402) { setUser(null); setArranque('licencia'); api_licencia().then(setLicencia).catch(() => {}) }
+      else if (err.status === 401) setUser(null)
+    }
+    window.addEventListener('farmasys:bloqueo', onBloqueo)
+    return () => window.removeEventListener('farmasys:bloqueo', onBloqueo)
+  }, [])
+
+  // PWA: el service worker permite instalar la web como app en Android, Windows y escritorio
+  useEffect(() => {
+    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') navigator.serviceWorker.register('/sw.js').catch(() => {})
   }, [])
 
   function handleLogin(u: SessionUser) {
     setUser(u)
-    localStorage.setItem(SESSION_KEY, JSON.stringify(u))
-    setModule('dashboard')
-    toast({ title: `Bienvenido, ${u.name}`, description: `Sesión iniciada como ${u.role}` })
+    setModule(MODULO_INICIAL[u.role])
+    toast({ title: `Bienvenido, ${u.name}`, description: `Sesión iniciada como ${ETIQUETA_ROL[u.role]}` })
   }
 
-  function logout() {
-    api_logout(user?.id, user?.name)
+  async function logout() {
+    await api_logout()
     setUser(null)
-    localStorage.removeItem(SESSION_KEY)
   }
 
   function go(m: string) {
@@ -139,6 +167,8 @@ export default function Home() {
     return NAV.filter((n) => canAccess(user.role, n.id))
   }, [user])
 
+  const moduloActual = user && !canAccess(user.role, module) ? MODULO_INICIAL[user.role] : module
+
   const groups = useMemo(() => {
     const map: Record<string, typeof visibleNav[number][]> = {}
     for (const n of visibleNav) {
@@ -148,7 +178,7 @@ export default function Home() {
     return map
   }, [visibleNav])
 
-  if (!ready) {
+  if (arranque === 'cargando') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-emerald-950">
         <div className="flex items-center gap-3 text-white">
@@ -159,9 +189,12 @@ export default function Home() {
     )
   }
 
+  if (arranque === 'licencia') return <LicenciaView inicial={licencia} bloqueante onValida={() => { setArranque('cargando'); arrancar() }} />
+  if (arranque === 'instalacion') return <SetupView onListo={(u) => { setArranque('listo'); handleLogin(u) }} />
   if (!user) return <LoginView onLogin={handleLogin} />
 
-  const roleLabel = user.role === 'ADMIN' ? 'Administrador' : user.role === 'FARMACEUTICO' ? 'Farmacéutico' : 'Vendedor'
+  const roleLabel = ETIQUETA_ROL[user.role]
+  const editaInventario = puedeEditarInventario(user.role)
 
   const sidebar = (
     <div className="flex h-full flex-col bg-gradient-to-b from-emerald-950 to-teal-950 text-white">
@@ -185,14 +218,14 @@ export default function Home() {
                   key={n.id}
                   onClick={() => go(n.id)}
                   className={`w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
-                    module === n.id
+                    moduloActual === n.id
                       ? 'bg-emerald-500/20 text-white font-medium border border-emerald-400/30'
                       : 'text-emerald-100/80 hover:bg-white/5 hover:text-white'
                   }`}
                 >
                   <n.icon className="h-4 w-4 shrink-0" />
                   <span className="truncate">{n.label}</span>
-                  {module === n.id && <ChevronRight className="h-3.5 w-3.5 ml-auto shrink-0" />}
+                  {moduloActual === n.id && <ChevronRight className="h-3.5 w-3.5 ml-auto shrink-0" />}
                 </button>
               ))}
             </div>
@@ -252,34 +285,35 @@ export default function Home() {
           </header>
 
           <main className="flex-1 p-4 md:p-6 max-w-[1400px] w-full mx-auto">
-            {module === 'dashboard' && <DashboardView key={dashKey} userName={user.name} onNavigate={go} />}
-            {module === 'pos' && <PosView user={user} onSaleDone={() => setDashKey((k) => k + 1)} />}
-            {module === 'cash' && <CashView user={user} />}
-            {module === 'products' && <ProductsView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
-            {module === 'inventory' && <InventoryView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
-            {module === 'sales' && <SalesView user={user} canVoid={user.role === 'ADMIN'} />}
-            {module === 'purchases' && <PurchasesView user={user} canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
-            {module === 'suggestions' && <SuggestionsView user={user} onCreated={() => setDashKey((k) => k + 1)} />}
-            {module === 'suppliers' && <SuppliersView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
-            {module === 'customers' && <CustomersView />}
-            {module === 'prescriptions' && <PrescriptionsView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} userName={user.name} />}
-            {module === 'interactions' && <InteractionsView user={user} />}
-            {module === 'counts' && <CountsView user={user} />}
-            {module === 'reports' && <ReportsView />}
-            {module === 'users' && user.role === 'ADMIN' && <UsersView currentUserId={user.id} />}
-            {module === 'settings' && user.role === 'ADMIN' && <SettingsView />}
-            {module === 'alerts' && <AlertsView onNavigate={go} />}
-            {module === 'movements' && <MovementsView user={user} />}
-            {module === 'controlled' && user.role !== 'VENDEDOR' && <ControlledView user={user} />}
-            {module === 'quotations' && <QuotationsView user={user} />}
-            {module === 'promotions' && <PromotionsView />}
-            {module === 'returns' && <ReturnsView user={user} canEdit={true} />}
-            {module === 'categories' && <CategoriesView canEdit={user.role === 'ADMIN' || user.role === 'FARMACEUTICO'} />}
-            {module === 'audit' && user.role === 'ADMIN' && <AuditView />}
+            {moduloActual === 'dashboard' && <DashboardView key={dashKey} userName={user.name} onNavigate={go} />}
+            {moduloActual === 'pos' && <PosView user={user} onSaleDone={() => setDashKey((k) => k + 1)} />}
+            {moduloActual === 'cash' && <CashView user={user} />}
+            {moduloActual === 'products' && <ProductsView canEdit={editaInventario} />}
+            {moduloActual === 'inventory' && <InventoryView canEdit={editaInventario} />}
+            {moduloActual === 'sales' && <SalesView user={user} canVoid={user.role === 'ADMIN'} />}
+            {moduloActual === 'purchases' && <PurchasesView user={user} canEdit={editaInventario} />}
+            {moduloActual === 'suggestions' && <SuggestionsView user={user} onCreated={() => setDashKey((k) => k + 1)} />}
+            {moduloActual === 'suppliers' && <SuppliersView canEdit={editaInventario} />}
+            {moduloActual === 'customers' && <CustomersView />}
+            {moduloActual === 'prescriptions' && <PrescriptionsView canEdit={editaInventario} userName={user.name} />}
+            {moduloActual === 'interactions' && <InteractionsView user={user} />}
+            {moduloActual === 'counts' && <CountsView user={user} />}
+            {moduloActual === 'reports' && <ReportsView />}
+            {moduloActual === 'users' && user.role === 'ADMIN' && <UsersView currentUserId={user.id} />}
+            {moduloActual === 'settings' && user.role === 'ADMIN' && <SettingsView />}
+            {moduloActual === 'alerts' && <AlertsView onNavigate={go} />}
+            {moduloActual === 'movements' && <MovementsView user={user} />}
+            {moduloActual === 'controlled' && user.role !== 'CAJERO' && <ControlledView user={user} />}
+            {moduloActual === 'quotations' && <QuotationsView user={user} />}
+            {moduloActual === 'promotions' && <PromotionsView />}
+            {moduloActual === 'returns' && <ReturnsView user={user} canEdit={true} />}
+            {moduloActual === 'categories' && <CategoriesView canEdit={editaInventario} />}
+            {moduloActual === 'audit' && user.role === 'ADMIN' && <AuditView />}
+            {moduloActual === 'licencia' && user.role === 'ADMIN' && <LicenciaView />}
           </main>
 
           <footer className="mt-auto border-t bg-white py-3 text-center text-xs text-muted-foreground">
-            FarmaSys © 2026 — Sistema Integral de Farmacias · Sesión: {user.name} ({roleLabel}) · Módulos activos: {(MODULES_BY_ROLE[user.role] || []).length} de 24
+            FarmaSys — Sistema Integral de Farmacias · Sesión: {user.name} ({roleLabel}) · Módulos: {MODULES_BY_ROLE[user.role].length}
           </footer>
         </div>
       </div>

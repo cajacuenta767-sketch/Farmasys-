@@ -2,6 +2,8 @@ import { db } from '@/lib/db'
 import { ok, bad, str } from '@/lib/api-helpers'
 import { hashPassword } from '@/lib/security'
 import { logAudit } from '@/lib/audit'
+import { esRol } from '@/lib/permisos'
+import { sesionDe } from '@/lib/sesion'
 
 // PUT /api/users/[id]
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -12,11 +14,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const role = str(b.role)
     const actor = str(b.actorName) || 'Sistema'
     if (!name) return bad('El nombre es obligatorio')
-    if (role && !['ADMIN', 'FARMACEUTICO', 'VENDEDOR'].includes(role)) return bad('Rol inválido')
+    if (role && !esRol(role)) return bad('Rol inválido')
 
     const data: Record<string, unknown> = {
       name,
-      role: role || 'VENDEDOR',
+      role: role || 'CAJERO',
       email: str(b.email) || null,
       phone: str(b.phone) || null,
       active: b.active !== false,
@@ -43,6 +45,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    if (sesionDe(_req)?.id === id) return bad('No puedes eliminar tu propio usuario')
     const sales = await db.sale.count({ where: { userId: id } })
     if (sales > 0) {
       await db.user.update({ where: { id }, data: { active: false } })

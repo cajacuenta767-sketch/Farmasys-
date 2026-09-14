@@ -1,0 +1,42 @@
+{
+  "name": "farmasys-desktop",
+  "productName": "FarmaSys",
+  "version": "2.0.0",
+  "description": "FarmaSys — Sistema Integral de Farmacias (instalador de escritorio)",
+  "private": true,
+  "main": "main.js",
+  "author": "FarmaSys",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win nsis --publish never",
+    "build:dir": "electron-builder --dir --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.farmasys.app",
+    "productName": "FarmaSys",
+    "artifactName": "FarmaSys-Setup.${ext}",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "package.json", "build/icon.png"],
+    "extraResources": [
+      { "from": "../.next/standalone", "to": "servidor", "filter": ["**/*", "!**/*.map"] },
+      { "from": "../.next/static", "to": "servidor/.next/static" },
+      { "from": "../public", "to": "servidor/public" },
+      { "from": "../prisma/template.db", "to": "servidor/prisma/template.db" }
+    ],
+    "asar": true,
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "FarmaSys",
+      "language": "3082"
+    }
+  }
+}

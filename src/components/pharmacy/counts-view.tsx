@@ -135,7 +135,7 @@ export function CountsView({ user }: { user: SessionUser }) {
           <h1 className="text-2xl font-bold tracking-tight">Conteo Físico de Inventario</h1>
           <p className="text-muted-foreground text-sm">Tomas de inventario · las diferencias se ajustan automáticamente al kardex</p>
         </div>
-        {user.role !== 'VENDEDOR' && (
+        {user.role !== 'CAJERO' && (
           <Button onClick={() => setCreateOpen(true)} className="bg-emerald-600 hover:bg-emerald-700"><Plus className="h-4 w-4 mr-1" /> Nueva toma de inventario</Button>
         )}
       </div>

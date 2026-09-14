@@ -1,19 +1,14 @@
-import { ok } from '@/lib/api-helpers'
+import { NextResponse } from 'next/server'
 import { logAudit } from '@/lib/audit'
+import { sesionDe, cabeceraSetCookie } from '@/lib/sesion'
 
-// POST /api/auth/logout — Cierre de sesión con registro de auditoría
+// POST /api/auth/logout — Cierre de sesión: borra la cookie y deja registro en auditoría
 export async function POST(req: Request) {
-  try {
-    const b = await req.json().catch(() => ({}))
-    await logAudit({
-      userId: b.userId || null,
-      userName: b.userName || 'Usuario',
-      action: 'LOGOUT',
-      module: 'Autenticación',
-      detail: 'Sesión cerrada',
-    })
-    return ok({ success: true })
-  } catch {
-    return ok({ success: true })
+  const s = sesionDe(req)
+  if (s) {
+    await logAudit({ userId: s.id, userName: s.name, action: 'LOGOUT', module: 'Autenticación', detail: 'Sesión cerrada' })
   }
+  const res = NextResponse.json({ success: true })
+  res.headers.set('Set-Cookie', cabeceraSetCookie(null, req))
+  return res
 }

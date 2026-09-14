@@ -1,18 +1,20 @@
 {
-  "name": "nextjs_tailwind_shadcn_ts",
-  "version": "0.2.1",
+  "name": "farmasys",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && node scripts/verificar-version.mjs && node scripts/prepare-db.mjs && next build",
     "postinstall": "prisma generate",
     "start": "next start -p 3000",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "db:push": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",
-    "db:seed": "tsx scripts/seed.ts",
+    "db:template": "node scripts/prepare-db.mjs",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset"
+    "desktop:build": "npm --prefix desktop run build",
+    "mobile:build": "npm --prefix mobile run build"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

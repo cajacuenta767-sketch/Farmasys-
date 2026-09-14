@@ -17,13 +17,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '@/hooks/use-toast'
 import { Plus, Pencil, Trash2, UserCog, ShieldCheck } from 'lucide-react'
 
-const ROLES = [
-  { value: 'ADMIN', label: 'Administrador', desc: 'Acceso total al sistema' },
-  { value: 'FARMACEUTICO', label: 'Farmacéutico', desc: 'Ventas, inventario, recetas y reportes' },
-  { value: 'VENDEDOR', label: 'Vendedor', desc: 'Punto de venta, ventas y clientes' },
-]
+import { ROLES as LISTA_ROLES, ETIQUETA_ROL, DESCRIPCION_ROL, MODULES_BY_ROLE } from '@/lib/permisos'
 
-const empty = { username: '', password: '', name: '', role: 'VENDEDOR', email: '', phone: '', active: true }
+const ROLES = LISTA_ROLES.map((r) => ({ value: r, label: ETIQUETA_ROL[r], desc: DESCRIPCION_ROL[r], modulos: MODULES_BY_ROLE[r].length }))
+
+const empty = { username: '', password: '', name: '', role: 'CAJERO', email: '', phone: '', active: true }
 
 export function UsersView({ currentUserId }: { currentUserId: string }) {
   const { toast } = useToast()
@@ -98,7 +96,7 @@ export function UsersView({ currentUserId }: { currentUserId: string }) {
   const roleBadge = (role: string) => {
     if (role === 'ADMIN') return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Administrador</Badge>
     if (role === 'FARMACEUTICO') return <Badge className="bg-teal-100 text-teal-700 hover:bg-teal-100">Farmacéutico</Badge>
-    return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Vendedor</Badge>
+    return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Cajero</Badge>
   }
 
   return (
@@ -106,11 +104,20 @@ export function UsersView({ currentUserId }: { currentUserId: string }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Usuarios y Roles</h1>
-          <p className="text-muted-foreground text-sm">{users.length} usuarios del sistema</p>
+          <p className="text-muted-foreground text-sm">{users.length} usuarios del sistema · cada rol ve solo su espacio</p>
         </div>
         <Button onClick={() => { setEditing(null); setForm(empty); setDialogOpen(true) }} className="bg-emerald-600 hover:bg-emerald-700">
           <Plus className="h-4 w-4 mr-1" /> Nuevo usuario
         </Button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        {ROLES.map((r) => (
+          <div key={r.value} className="rounded-lg border bg-white p-3">
+            <div className="flex items-center justify-between">{roleBadge(r.value)}<span className="text-xs text-muted-foreground">{r.modulos} módulos</span></div>
+            <p className="mt-2 text-xs text-muted-foreground">{r.desc}</p>
+          </div>
+        ))}
       </div>
 
       <Card>
@@ -186,7 +193,7 @@ export function UsersView({ currentUserId }: { currentUserId: string }) {
                 <SelectContent>
                   {ROLES.map((r) => (
                     <SelectItem key={r.value} value={r.value}>
-                      <span className="font-medium">{r.label}</span> — <span className="text-muted-foreground text-xs">{r.desc}</span>
+                      <span className="font-medium">{r.label}</span> <span className="text-muted-foreground text-xs">· {r.modulos} módulos</span>
                     </SelectItem>
                   ))}
                 </SelectContent>

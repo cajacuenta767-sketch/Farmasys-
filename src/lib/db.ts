@@ -6,38 +6,50 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+/** Base vacía con el esquema ya aplicado; se genera en `npm run build` (scripts/prepare-db.mjs). */
+function plantillaDb(): string | null {
+  const candidatos = [process.env.FARMASYS_TEMPLATE_DB, path.join(process.cwd(), 'prisma', 'template.db')].filter(Boolean) as string[]
+  return candidatos.find((c) => fs.existsSync(c)) || null
+}
+
+/**
+ * Resuelve DATABASE_URL:
+ *  - URL remota (Postgres, Turso, etc.): se usa tal cual.
+ *  - `file:` relativa: se resuelve contra la carpeta prisma/ para que no dependa del cwd.
+ *  - Serverless (Vercel): la base vive en /tmp (efímera; para producción usa una base remota).
+ *  - Si el archivo no existe, se copia la plantilla vacía: así el primer arranque no necesita `prisma db push`.
+ */
 function resolveDatabaseUrl(): string | undefined {
-  const isVercel = Boolean(process.env.VERCEL) || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME)
+  const isServerless = Boolean(process.env.VERCEL) || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME)
   const envUrl = process.env.DATABASE_URL
+  if (envUrl && !envUrl.startsWith('file:')) return envUrl
 
-  // Si se proporciona una URL remota (Postgres, Neon, Supabase, Turso), usarla directamente
-  if (envUrl && !envUrl.startsWith('file:')) {
-    return envUrl
+  let archivo: string
+  if (isServerless) {
+    archivo = '/tmp/farmasys.db'
+  } else {
+    const relativo = (envUrl || 'file:./dev.db').slice('file:'.length)
+    archivo = path.isAbsolute(relativo) ? relativo : path.resolve(process.cwd(), 'prisma', relativo)
   }
 
-  // En Vercel Serverless, el filesystem /var/task es de solo lectura.
-  // Clonamos la base de datos pre-sembrada a /tmp para habilitar escrituras y funcionamiento completo.
-  if (isVercel) {
-    const tmpDbPath = '/tmp/farmasys.db'
-    if (!fs.existsSync(tmpDbPath)) {
-      const seedCandidate = path.join(process.cwd(), 'prisma', 'dev.db')
-      if (fs.existsSync(seedCandidate)) {
-        try {
-          fs.copyFileSync(seedCandidate, tmpDbPath)
-          console.log(`[db] Cloned seed database to ${tmpDbPath}`)
-        } catch (err) {
-          console.error('[db] Error copying seed db to /tmp:', err)
-        }
+  if (!fs.existsSync(archivo)) {
+    const plantilla = plantillaDb()
+    try {
+      fs.mkdirSync(path.dirname(archivo), { recursive: true })
+      if (plantilla) {
+        fs.copyFileSync(plantilla, archivo)
+        console.log(`[db] Base de datos nueva creada en ${archivo}`)
       } else {
-        console.warn('[db] Seed database template not found at prisma/dev.db')
+        console.warn(`[db] No existe ${archivo} ni la plantilla prisma/template.db. Ejecuta "npm run db:push".`)
       }
+    } catch (err) {
+      console.error('[db] No se pudo preparar la base de datos:', err)
     }
-    const resolvedUrl = `file:${tmpDbPath}`
-    process.env.DATABASE_URL = resolvedUrl
-    return resolvedUrl
   }
 
-  return envUrl
+  const resolved = `file:${archivo}`
+  process.env.DATABASE_URL = resolved
+  return resolved
 }
 
 const resolvedDbUrl = resolveDatabaseUrl()
@@ -46,7 +58,7 @@ export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
     datasources: resolvedDbUrl ? { db: { url: resolvedDbUrl } } : undefined,
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db

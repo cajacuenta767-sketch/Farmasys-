@@ -8,13 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Cross, LogIn, ShieldCheck, User, Lock } from 'lucide-react'
-
-const DEMO_USERS = [
-  { username: 'admin', password: 'admin123', role: 'Administrador', desc: 'Acceso total al sistema' },
-  { username: 'farmacia', password: 'farm123', role: 'Farmacéutico', desc: 'Ventas, inventario y recetas' },
-  { username: 'vendedor', password: 'venta123', role: 'Vendedor', desc: 'Punto de venta y clientes' },
-]
+import { Cross, LogIn, ShieldCheck, User, Lock, MonitorDown, Smartphone } from 'lucide-react'
+import { ENLACES_DESCARGA } from '@/lib/descargas'
 
 export function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
   const [username, setUsername] = useState('')
@@ -34,11 +29,6 @@ export function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void })
     } finally {
       setLoading(false)
     }
-  }
-
-  function quickFill(u: string, p: string) {
-    setUsername(u)
-    setPassword(p)
   }
 
   return (
@@ -65,6 +55,11 @@ export function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void })
               <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-400" /> Reportes de ventas y alertas inteligentes</li>
             </ul>
           </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <a href={ENLACES_DESCARGA.windows} className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 hover:bg-white/10"><MonitorDown className="h-3.5 w-3.5" /> Instalador Windows</a>
+            <a href={ENLACES_DESCARGA.android} className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 hover:bg-white/10"><Smartphone className="h-3.5 w-3.5" /> App Android</a>
+            <a href="/descargas" className="inline-flex items-center rounded-lg px-3 py-1.5 text-emerald-300 hover:text-white">Todas las descargas</a>
+          </div>
         </div>
 
         {/* Formulario */}
@@ -82,7 +77,7 @@ export function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void })
                 <Label htmlFor="username">Usuario</Label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input id="username" className="pl-9" placeholder="usuario" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+                  <Input id="username" className="pl-9" placeholder="usuario" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" />
                 </div>
               </div>
               <div className="space-y-2">
@@ -98,26 +93,9 @@ export function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void })
                 {loading ? 'Ingresando...' : 'Ingresar'}
               </Button>
             </form>
-
-            <div className="mt-6 border-t pt-4">
-              <p className="text-xs text-muted-foreground text-center mb-3">Cuentas de demostración (haga clic para llenar):</p>
-              <div className="grid gap-2">
-                {DEMO_USERS.map((u) => (
-                  <button
-                    key={u.username}
-                    type="button"
-                    onClick={() => quickFill(u.username, u.password)}
-                    className="flex items-center justify-between rounded-lg border px-3 py-2 text-left hover:bg-emerald-50 hover:border-emerald-300 transition-colors"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{u.role}</p>
-                      <p className="text-xs text-muted-foreground">{u.desc}</p>
-                    </div>
-                    <span className="text-xs font-mono bg-slate-100 rounded px-2 py-1">{u.username} / {u.password}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="mt-5 text-center text-xs text-muted-foreground md:hidden">
+              <a href="/descargas" className="underline">Descargar para Windows o Android</a>
+            </p>
           </CardContent>
         </Card>
       </div>

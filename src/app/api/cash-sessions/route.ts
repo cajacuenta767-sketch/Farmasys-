@@ -1,10 +1,14 @@
 import { db } from '@/lib/db'
 import { ok, bad, num, str } from '@/lib/api-helpers'
+import { sesionDe } from '@/lib/sesion'
 
 // GET /api/cash-sessions — historial de sesiones de caja
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // El cajero solo ve sus propios turnos de caja
+    const sesion = sesionDe(req)
     const sessions = await db.cashSession.findMany({
+      where: sesion?.role === 'CAJERO' ? { userId: sesion.id } : undefined,
       include: {
         user: { select: { id: true, name: true } },
         movements: true,

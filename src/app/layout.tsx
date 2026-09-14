@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -16,16 +16,20 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "FarmaSys — Sistema Integral de Farmacias",
   description: "Sistema completo de gestión de farmacias: punto de venta, inventario por lotes, compras, recetas, reportes y más.",
-  keywords: ["farmacia", "punto de venta", "inventario", "medicamentos", "sistema de farmacias"],
+  applicationName: "FarmaSys",
+  manifest: "/manifest.webmanifest",
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: [{ url: "/icono.svg", type: "image/svg+xml" }, { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: "/icons/icon-192.png",
   },
-  openGraph: {
-    title: "FarmaSys — Sistema Integral de Farmacias",
-    description: "Gestión completa de farmacias: POS, inventario, compras, recetas y reportes",
-    siteName: "FarmaSys",
-    type: "website",
-  },
+  appleWebApp: { capable: true, title: "FarmaSys", statusBarStyle: "black-translucent" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#022c22",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

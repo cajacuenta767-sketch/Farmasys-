@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>FarmaSys</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: linear-gradient(135deg, #022c22, #134e4a); color: #ecfdf5; padding: 24px; box-sizing: border-box; }
+    .c { width: min(420px, 100%); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.15); border-radius: 16px; padding: 24px; }
+    h1 { margin: 0 0 4px; font-size: 22px; display: flex; align-items: center; gap: 10px; }
+    .logo { width: 40px; height: 40px; border-radius: 12px; background: #059669; display: grid; place-items: center; font-size: 26px; font-weight: 700; color: #fff; }
+    p { color: #a7f3d0; font-size: 14px; margin: 6px 0 18px; }
+    label { font-size: 13px; display: block; margin-bottom: 6px; }
+    input { width: 100%; box-sizing: border-box; padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.2); background: rgba(0,0,0,.25); color: #fff; font-size: 16px; }
+    button { margin-top: 14px; width: 100%; padding: 13px; border: 0; border-radius: 10px; background: #10b981; color: #fff; font-size: 16px; font-weight: 600; }
+    .e { color: #fca5a5; font-size: 13px; margin-top: 10px; min-height: 18px; }
+    .s { font-size: 12px; color: #6ee7b7; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <form class="c" id="f">
+    <h1><span class="logo">+</span> FarmaSys</h1>
+    <p>Escribe la dirección del servidor FarmaSys de tu farmacia. Se guarda en este teléfono.</p>
+    <label for="u">Dirección del servidor</label>
+    <input id="u" type="url" inputmode="url" placeholder="https://farmacia.midominio.com" autocapitalize="none" autocomplete="url" required />
+    <button type="submit">Conectar</button>
+    <div class="e" id="e"></div>
+    <div class="s">Las licencias, usuarios y datos están en el servidor; cada rol ve solo su espacio.</div>
+  </form>
+  <script>
+    const CLAVE = 'farmasys_servidor';
+    const u = document.getElementById('u');
+    const e = document.getElementById('e');
+    const guardada = localStorage.getItem(CLAVE);
+    const params = new URLSearchParams(location.search);
+    if (guardada) u.value = guardada;
+    // Al abrir la app, si ya hay servidor guardado, entra directo (salvo que se pida cambiarlo con ?cambiar=1)
+    if (guardada && !params.has('cambiar')) location.replace(guardada);
+    document.getElementById('f').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      let url = u.value.trim().replace(/\/+$/, '');
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+      e.textContent = 'Comprobando…';
+      try {
+        const r = await fetch(url + '/api/salud', { cache: 'no-store' });
+        if (!r.ok) throw new Error('El servidor respondió ' + r.status);
+        localStorage.setItem(CLAVE, url);
+        location.href = url;
+      } catch (err) {
+        e.textContent = 'No se pudo conectar: ' + (err && err.message ? err.message : 'revisa la dirección');
+      }
+    });
+  </script>
+</body>
+</html>
