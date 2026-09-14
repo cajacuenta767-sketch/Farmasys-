@@ -9,6 +9,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      publicar:
+        description: 'Publicar Release (crea el tag vX.Y.Z con la versión de package.json)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -102,15 +107,23 @@ jobs:
 
   release:
     name: Publicar Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publicar)
     needs: [web, windows, android]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: Determinar el tag
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "nombre=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else echo "nombre=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/download-artifact@v4
         with: { path: artefactos }
       - uses: softprops/action-gh-release@v2
         with:
-          name: FarmaSys ${{ github.ref_name }}
+          tag_name: ${{ steps.tag.outputs.nombre }}
+          target_commitish: ${{ github.sha }}
+          name: FarmaSys ${{ steps.tag.outputs.nombre }}
           generate_release_notes: true
           files: |
             artefactos/FarmaSys-Setup.exe/FarmaSys-Setup.exe
